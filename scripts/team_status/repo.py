@@ -29,6 +29,15 @@ def git_head(project_dir, env=None):
     return Head(branch.stdout.strip(), commit.stdout.strip())
 
 
+def is_ignored(project_dir, relative_path, env=None):
+    """Answer whether git ignores the path; False when unsure (no git, not a repo, any error)."""
+    try:
+        result = _run(["git", "check-ignore", "-q", relative_path], project_dir, env)
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return result.returncode == 0
+
+
 def worktrees(project_dir, env=None):
     """Answer the branch of every worktree except the main checkout."""
     try:

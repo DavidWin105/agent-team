@@ -15,6 +15,86 @@ ENTRY = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "scripts"
 GH_ONE_PR = "echo '[{\"number\": 7, \"title\": \"feat: made-up item\"}]'"
 
 
+CLEAR = "\x1b[H\x1b[2J"
+
+
+class WatchTest(unittest.TestCase):
+    def setUp(self):
+        self.root = make_project()
+        self.addCleanup(shutil.rmtree, self.root)
+        bindir = fake_gh(GH_ONE_PR)
+        self.addCleanup(shutil.rmtree, bindir)
+        self.env = env_with(bindir)
+
+    def watch(self, argv, sleep, max_frames=2):
+        out, err = io.StringIO(), io.StringIO()
+        code = cli.main(argv, env=self.env, out=out, err=err, sleep=sleep, max_frames=max_frames)
+        return code, out.getvalue(), err.getvalue()
+
+    def ignore_log(self):
+        with open(os.path.join(self.root, ".gitignore"), "w", encoding="utf-8") as handle:
+            handle.write(".claude/team/events.jsonl\n")
+
+    def test_watch_draws_two_frames_and_sees_new_event(self):
+        write_events(self.root, [{"ts": "2026-11-17T10:00:00Z", "event": "start", "agent_id": "a1",
+                                  "agent": "builder", "item": "first-item"}])
+        slept = []
+
+        def sleep(seconds):
+            slept.append(seconds)
+            with open(os.path.join(self.root, ".claude/team/events.jsonl"), "a", encoding="utf-8") as handle:
+                handle.write('{"ts": "2026-11-17T10:01:00Z", "event": "start", "agent_id": "a2", '
+                             '"agent": "builder", "item": "second-item"}\n')
+
+        code, out, _ = self.watch(["--watch", self.root], sleep)
+        frames = out.split(CLEAR)
+        self.assertEqual(code, 0)
+        self.assertEqual(frames[0], "")
+        self.assertEqual(len(frames), 3)
+        self.assertNotIn("second-item", frames[1])
+        self.assertIn("first-item", frames[1])
+        self.assertIn("second-item", frames[2])
+        self.assertEqual(slept, [1])
+
+    def test_watch_flag_may_follow_the_folder(self):
+        code, out, _ = self.watch([self.root, "--watch"], lambda s: None, max_frames=1)
+        self.assertEqual(code, 0)
+        self.assertTrue(out.startswith(CLEAR))
+
+    def test_watch_exit_0_on_ctrl_c(self):
+        def sleep(seconds):
+            raise KeyboardInterrupt
+
+        code, out, err = self.watch(["--watch", self.root], sleep, max_frames=None)
+        self.assertEqual(code, 0)
+        self.assertEqual(out.count(CLEAR), 1)
+        self.assertNotIn("Traceback", err)
+
+    def test_watch_warns_once_when_log_not_ignored(self):
+        code, _, err = self.watch(["--watch", self.root], lambda s: None)
+        self.assertEqual(err, "team-status: .claude/team/events.jsonl is not ignored by git\n")
+
+    def test_watch_no_warning_when_ignored(self):
+        self.ignore_log()
+        code, _, err = self.watch(["--watch", self.root], lambda s: None)
+        self.assertEqual(err, "")
+
+    def test_snapshot_never_warns(self):
+        out, err = io.StringIO(), io.StringIO()
+        cli.main([self.root], env=self.env, out=out, err=err)
+        self.assertEqual(err.getvalue(), "")
+        self.assertNotIn(CLEAR, out.getvalue())
+
+    def test_git_and_gh_gathered_every_tenth_frame(self):
+        calls = []
+        real = cli.repo.open_prs
+        cli.repo.open_prs = lambda *a, **k: calls.append(1) or real(*a, **k)
+        self.addCleanup(setattr, cli.repo, "open_prs", real)
+        self.ignore_log()
+        self.watch(["--watch", self.root], lambda s: None, max_frames=11)
+        self.assertEqual(len(calls), 2)
+
+
 class MainTest(unittest.TestCase):
     def run_main(self, root, env=None, now=None):
         out, err = io.StringIO(), io.StringIO()
