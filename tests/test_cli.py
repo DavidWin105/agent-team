@@ -2,20 +2,36 @@
 import io
 import os
 import shutil
+import re
 import subprocess
 import sys
+import threading
 import unittest
 
 from datetime import datetime, timezone
 
 from fixtures import MISSING, PLAN_DRAFT, ROUTING_LOG, env_with, fake_gh, make_project, write_events
-from team_status import cli
+from team_status import cards, cli
+from team_status.repo import PullRequest
 
 ENTRY = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "scripts", "team-status")
 GH_ONE_PR = "echo '[{\"number\": 7, \"title\": \"feat: made-up item\"}]'"
 
 
 CLEAR = "\x1b[H\x1b[2J"
+NOW = datetime(2026, 11, 17, 10, 10, 0, tzinfo=timezone.utc)
+CLOCK = NOW.astimezone().strftime("%H:%M:%S")
+PLAN_EVENTS = [
+    {"ts": "2026-11-17T10:00:00Z", "event": "plan", "target": "plans/2026-11-17-calc.md"},
+    {"ts": "2026-11-17T10:06:48Z", "event": "start", "agent_id": "a1", "agent": "builder", "item": "subtract"},
+]
+
+
+def join_gh_threads():
+    """Wait (bounded) for the background gh threads, so no test leaves one running."""
+    for thread in threading.enumerate():
+        if thread.name == cli.GH_THREAD:
+            thread.join(10)
 WARNING = "WARNING: .claude/team/events.jsonl is not ignored by git; add .claude/team/ to .gitignore"
 
 
@@ -27,9 +43,11 @@ class WatchTest(unittest.TestCase):
         self.addCleanup(shutil.rmtree, bindir)
         self.env = env_with(bindir)
 
-    def watch(self, argv, sleep, max_frames=2, width=80):
+    def watch(self, argv, sleep, max_frames=2, width=80, now=None, height=0):
         out, err = io.StringIO(), io.StringIO()
-        code = cli.main(argv, env=self.env, out=out, err=err, sleep=sleep, max_frames=max_frames, width=width, color=False)
+        code = cli.main(argv, env=self.env, out=out, err=err, sleep=sleep, max_frames=max_frames, width=width, color=False,
+                        now=now, height=height)
+        join_gh_threads()
         return code, out.getvalue(), err.getvalue()
 
     def ignore_log(self):
@@ -162,11 +180,145 @@ class WatchTest(unittest.TestCase):
     def test_git_and_gh_gathered_every_tenth_frame(self):
         calls = []
         real = cli.repo.open_prs
-        cli.repo.open_prs = lambda *a, **k: calls.append(1) or real(*a, **k)
+        cli.repo.open_prs = lambda *a, **k: calls.append(1) or []
         self.addCleanup(setattr, cli.repo, "open_prs", real)
         self.ignore_log()
-        self.watch(["--watch", self.root], lambda s: None, max_frames=11)
+        self.watch(["--watch", self.root], lambda s: join_gh_threads(), max_frames=11)
         self.assertEqual(len(calls), 2)
+
+    def test_header_shows_plan_name_and_clock(self):
+        self.ignore_log()
+        write_events(self.root, PLAN_EVENTS)
+        _, wide, _ = self.watch(["--watch", self.root], lambda s: None, max_frames=1, width=120, now=NOW)
+        first = wide.split(CLEAR)[1].splitlines()[0]
+        self.assertTrue(first.startswith("AGENT TEAM · plan: plans/2026-11-17-calc.md"), first)
+        self.assertTrue(first.endswith(CLOCK), first)
+        self.assertEqual(cards.display_width(first), 120)
+        _, narrow, _ = self.watch(["--watch", self.root], lambda s: None, max_frames=1, width=80, now=NOW)
+        lines = narrow.split(CLEAR)[1].splitlines()
+        self.assertRegex(lines[0], r"^agent-team · .* · main [0-9a-f]+ · %s$" % CLOCK)
+        self.assertIn("AGENTS   plan: plans/2026-11-17-calc.md", lines)
+
+    def test_watch_reads_the_terminal_height_every_frame(self):
+        sizes = [os.terminal_size((120, 12)), os.terminal_size((120, 0))]
+        real = cli.shutil.get_terminal_size
+        cli.shutil.get_terminal_size = lambda *a, **k: sizes.pop(0)
+        self.addCleanup(setattr, cli.shutil, "get_terminal_size", real)
+        self.ignore_log()
+        write_events(self.root, PLAN_EVENTS[:1] + [dict(PLAN_EVENTS[1], agent_id="a%d" % n, item="item%d" % n)
+                                                   for n in range(8)])
+        out = io.StringIO()
+        cli.main(["--watch", self.root], env=self.env, out=out, err=io.StringIO(), sleep=lambda s: None,
+                 max_frames=2, color=False, now=NOW)
+        join_gh_threads()
+        frames = out.getvalue().split(CLEAR)
+        self.assertIn("+8 more agents (use a taller terminal)", frames[1])
+        self.assertNotIn("more agents", frames[2])
+        self.assertIn("item7", frames[2])
+        self.assertEqual(sizes, [])
+
+
+    def test_card_frame_as_tall_as_the_screen_does_not_scroll(self):
+        self.ignore_log()
+        write_events(self.root, PLAN_EVENTS)
+        _, out, _ = self.watch(["--watch", self.root], lambda s: None, max_frames=2, width=120, now=NOW)
+        tall = len(out.split(CLEAR)[1].splitlines())
+        _, out, _ = self.watch(["--watch", self.root], lambda s: None, max_frames=2, width=120, now=NOW, height=tall)
+        frames = out.split(CLEAR)
+        self.assertEqual(len(frames[1].splitlines()), tall)
+        self.assertEqual(frames[1].count("\n"), tall - 1)  # no newline after the last line
+        self.assertTrue(frames[2].endswith("┘\n"))  # the last frame ends the line before the shell prompt
+
+
+class GhThreadTest(unittest.TestCase):
+    def setUp(self):
+        self.root = make_project()
+        self.addCleanup(shutil.rmtree, self.root)
+        with open(os.path.join(self.root, ".gitignore"), "w", encoding="utf-8") as handle:
+            handle.write(".claude/team/events.jsonl\n")
+        self.real = cli.repo.open_prs
+        self.addCleanup(setattr, cli.repo, "open_prs", self.real)
+        self.addCleanup(join_gh_threads)
+
+    def watch(self, sleep, max_frames):
+        out = io.StringIO()
+        code = cli.main(["--watch", self.root], out=out, err=io.StringIO(), sleep=sleep, max_frames=max_frames,
+                        width=120, height=0, color=False, now=NOW)
+        return code, out.getvalue().split(CLEAR)
+
+    def test_slow_gh_does_not_delay_frames(self):
+        started, release = threading.Event(), threading.Event()
+
+        def slow(*args, **kwargs):
+            started.set()
+            release.wait(10)
+            return [PullRequest(7, "feat: slow")]
+
+        cli.repo.open_prs = slow
+        slept = []
+
+        def sleep(seconds):
+            slept.append(seconds)
+            if len(slept) == 2:  # frames 0 and 1 are drawn while gh still hangs
+                self.assertTrue(started.wait(10))
+                release.set()
+                join_gh_threads()
+
+        code, frames = self.watch(sleep, max_frames=3)
+        self.assertEqual(code, 0)
+        for frame in frames[1:3]:
+            self.assertIn("pull requests: not checked", frame)
+            self.assertNotIn("merge #7", frame)
+        self.assertIn("merge #7", frames[3])
+        self.assertNotIn("not checked", frames[3])
+
+    def test_only_one_gh_thread_at_a_time(self):
+        lock = threading.Lock()
+        calls, active, peak = [], [0], [0]
+        release = threading.Event()
+
+        def blocking(*args, **kwargs):
+            with lock:
+                calls.append(1)
+                active[0] += 1
+                peak[0] = max(peak[0], active[0])
+            release.wait(10)
+            with lock:
+                active[0] -= 1
+            return []
+
+        cli.repo.open_prs = blocking
+        code, frames = self.watch(lambda s: None, max_frames=21)  # frames 0, 10 and 20 would start one
+        self.assertEqual((code, len(frames)), (0, 22))
+        self.assertEqual(len([t for t in threading.enumerate() if t.name == cli.GH_THREAD]), 1)
+        release.set()
+        join_gh_threads()
+        self.assertEqual((len(calls), peak[0]), (1, 1))
+
+        calls.clear()
+        release.clear()
+        count = []
+
+        def sleep(seconds):
+            count.append(1)
+            if len(count) == 5:  # let the first gh call finish before frame 10
+                release.set()
+                join_gh_threads()
+                release.clear()
+
+        self.watch(sleep, max_frames=11)
+        release.set()
+        join_gh_threads()
+        self.assertEqual((len(calls), peak[0]), (2, 1))
+
+    def test_gh_thread_is_a_daemon(self):
+        seen = []
+        cli.repo.open_prs = lambda *a, **k: seen.append(threading.current_thread()) or []
+        self.watch(lambda s: join_gh_threads(), max_frames=1)
+        join_gh_threads()
+        self.assertEqual(len(seen), 1)
+        self.assertTrue(seen[0].daemon)
+        self.assertEqual(seen[0].name, cli.GH_THREAD)
 
 
 class WatchHeadTest(WatchTest):
@@ -257,6 +409,36 @@ class MainTest(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertLess(out.index("AGENTS"), out.index("PLANS"))
         self.assertIn("subtract  builder        \u25b6 Edit test_calc.py  3m12s  1 call", out)
+
+    def test_snapshot_shows_plan_name_without_clock(self):
+        root = self.project()
+        write_events(root, PLAN_EVENTS)
+        code, out, _ = self.run_main(root, self.gh_env(), now=NOW)
+        self.assertEqual(code, 0)
+        lines = out.splitlines()
+        self.assertIn("AGENTS   plan: plans/2026-11-17-calc.md", lines)
+        self.assertNotRegex(lines[0], r"\d\d:\d\d:\d\d")
+        self.assertNotIn(CLEAR, out)
+        self.assertEqual(self.run_main(root, self.gh_env(), now=NOW)[1], out)
+
+    def test_snapshot_calls_gh_directly(self):
+        root = self.project()
+        real = cli.repo.open_prs
+        self.addCleanup(setattr, cli.repo, "open_prs", real)
+        seen = []
+        cli.repo.open_prs = lambda *a, **k: seen.append(threading.current_thread()) or [PullRequest(9, "x")]
+        _, out, _ = self.run_main(root)
+        self.assertEqual(seen, [threading.main_thread()])
+        self.assertIn("merge #9", out)
+
+    def test_command_doc_mentions_agents_and_watch(self):
+        with open(os.path.join(os.path.dirname(ENTRY), "..", "commands", "team-status.md"), encoding="utf-8") as handle:
+            text = handle.read()
+        front, body = re.match(r"---\n(.*?)\n---\n(.*)", text, re.S).groups()
+        description = next(line for line in front.splitlines() if line.startswith("description:"))
+        for part in (description, body):
+            self.assertIn("AGENTS", part)
+            self.assertIn("--watch", part)
 
     def test_snapshot_without_events_says_so(self):
         code, out, _ = self.run_main(self.project(), self.gh_env())

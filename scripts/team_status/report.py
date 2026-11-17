@@ -11,9 +11,11 @@ GLYPHS = {"running": "\u25b6", "done": "\u2713", "failed": "\u2717", "silent": "
 
 
 def render(project, head, plan_list, branches, prs, summary, routing_path, agents=None, now=None, events_path=DEFAULT_EVENTS,
-           warning=None):
+           warning=None, clock=None):
+    """Answer the table report; clock (only in --watch frames) is appended to the header line."""
     now = now or datetime.now(timezone.utc)
-    lines = ["agent-team · %s · %s %s" % (project, head.branch, head.commit)] + ([warning] if warning else []) + [""]
+    header = "agent-team · %s · %s %s" % (project, head.branch, head.commit) + (" · " + clock if clock else "")
+    lines = [header] + ([warning] if warning else []) + [""]
     lines += format_agents(agents, now, events_path) + [""]
     lines += _plans(plan_list) + [""]
     lines += ["WORKTREES   %d   %s" % (len(branches), ", ".join(branches)), ""]
@@ -24,9 +26,9 @@ def render(project, head, plan_list, branches, prs, summary, routing_path, agent
 
 
 def format_agents(log, now, events_path):
-    """Answer the AGENTS section lines; say so when there is nothing to show."""
+    """Answer the AGENTS section lines, the plan marker name on the first; say so when there is nothing to show."""
     rows = [] if _empty(log) else log.rows(now)
-    lines = ["AGENTS"]
+    lines = ["AGENTS" + ("   plan: %s" % log.plan if log is not None and log.plan else "")]
     if rows:
         item_width = max(len(row.item or "-") for row in rows)
         status = [_status(row) for row in rows]
