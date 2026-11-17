@@ -18,7 +18,20 @@ In Claude Code:
 1. `/team-init` writes `.claude/team.json`.
 2. Ask the lead to plan a task; approve the plan; ask it to run the plan.
 3. `/team-status`, or from a clone of this repository in any terminal: `python3 -I agent-team/scripts/team-status <project-dir>`.
-4. With [claude-flightdeck](https://github.com/scasella/claude-flightdeck) installed, `/flightdeck` shows one session's agents live.
+4. `team-status --watch` (run it in a second terminal) shows every agent live. [claude-flightdeck](https://github.com/scasella/claude-flightdeck) is an optional alternative: `/flightdeck` shows one session's agents.
+
+### What the live view shows and does not
+
+It shows each team agent's role, item, state, what it is doing and its tool calls, recorded by hooks. It records only tool names, project-relative file paths and the first word of a Bash command (never file contents, other command text or output; a command that starts with a `VAR=value` word is logged with no name). Hooks cannot tell that an agent failed, so a stopped agent shows as done. The hook field names are documented, not yet observed in a real run.
+
+### Checking the live view
+
+Not yet run by the author. To check it yourself:
+
+1. Install the plugin in a scratch git repository and run `/team-init`.
+2. In a second terminal, open `python3 -I <path-to>/agent-team/scripts/team-status --watch <scratch-dir>`.
+3. In the first terminal, ask the lead to plan and run a two-item plan (for example, a `subtract` and a `multiply` function in separate files).
+4. Check that each agent appears, shows what it is doing, and ends as done.
 
 ## Tests
 

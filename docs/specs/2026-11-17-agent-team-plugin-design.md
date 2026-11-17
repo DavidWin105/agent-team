@@ -23,7 +23,7 @@ A Claude Code plugin, kept in its own git repository at `~/Office/agent-team`, t
 ## 3. Non-goals (version 1)
 
 - No Cursor, Codex or Grok adapter. The config leaves room for one (section 6).
-- No monitor of our own. Flightdeck covers live sessions.
+- No monitor inside the session. Flightdeck covers one live session; the live view (`docs/specs/2026-11-17-live-agent-view-design.md`) covers the whole team from a second terminal.
 - No cross-vendor reviewer (for example Codex reviewing Claude code). Worth adding later.
 - No replacement of a project's own agents. That is a later decision (section 11).
 - Nothing published to a public marketplace.

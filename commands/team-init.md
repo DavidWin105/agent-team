@@ -16,3 +16,4 @@ python3 -I "${CLAUDE_PLUGIN_ROOT}/scripts/team-status" "$PWD"
 ```
 
 6. Show the output. If it reports a config problem, fix only that field with the owner and run it again.
+7. Append `.claude/team/` to the project's `.gitignore` if it is not already listed (create the file if it does not exist), and tell the owner.
