@@ -6,7 +6,9 @@ import subprocess
 import sys
 import unittest
 
-from fixtures import MISSING, PLAN_DRAFT, ROUTING_LOG, env_with, fake_gh, make_project
+from datetime import datetime, timezone
+
+from fixtures import MISSING, PLAN_DRAFT, ROUTING_LOG, env_with, fake_gh, make_project, write_events
 from team_status import cli
 
 ENTRY = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "scripts", "team-status")
@@ -14,9 +16,9 @@ GH_ONE_PR = "echo '[{\"number\": 7, \"title\": \"feat: made-up item\"}]'"
 
 
 class MainTest(unittest.TestCase):
-    def run_main(self, root, env=None):
+    def run_main(self, root, env=None, now=None):
         out, err = io.StringIO(), io.StringIO()
-        code = cli.main([root], env=env, out=out, err=err)
+        code = cli.main([root], env=env, out=out, err=err, now=now)
         return code, out.getvalue(), err.getvalue()
 
     def project(self, **kwargs):
@@ -36,6 +38,24 @@ class MainTest(unittest.TestCase):
         self.assertIn("merge #7", out)
         self.assertIn("plan b-two: 2 unanswered questions", out)
         self.assertIn("fable", out)
+
+    def test_snapshot_shows_agents_before_plans(self):
+        root = self.project(files={"plans/b-two.md": PLAN_DRAFT})
+        write_events(root, [
+            {"ts": "2026-11-17T10:00:00Z", "event": "plan", "target": "p"},
+            {"ts": "2026-11-17T10:06:48Z", "event": "start", "agent_id": "a1", "agent": "builder", "item": "subtract"},
+            {"ts": "2026-11-17T10:09:50Z", "event": "tool", "agent_id": "a1", "agent": "builder",
+             "item": "subtract", "tool": "Edit", "target": "test_calc.py", "phase": "pre"},
+        ])
+        now = datetime(2026, 11, 17, 10, 10, 0, tzinfo=timezone.utc)
+        code, out, _ = self.run_main(root, self.gh_env(), now=now)
+        self.assertEqual(code, 0)
+        self.assertLess(out.index("AGENTS"), out.index("PLANS"))
+        self.assertIn("subtract  builder        \u25b6 Edit test_calc.py  3m12s  1 calls", out)
+
+    def test_snapshot_without_events_says_so(self):
+        code, out, _ = self.run_main(self.project(), self.gh_env())
+        self.assertIn("no agent events recorded yet (.claude/team/events.jsonl)", out)
 
     def test_missing_config_exit_1_with_hint(self):
         code, out, err = self.run_main(self.project(config=MISSING))

@@ -3,9 +3,10 @@ import os
 import sys
 
 from team_status import config, plans, repo, report, routing
+from team_status.events import EventLog
 
 
-def main(argv, env=None, out=None, err=None):
+def main(argv, env=None, out=None, err=None, now=None):
     out = sys.stdout if out is None else out
     err = sys.stderr if err is None else err
     project = os.path.abspath(argv[0] if argv else os.getcwd())
@@ -23,6 +24,9 @@ def main(argv, env=None, out=None, err=None):
     paths = cfg["paths"]
     log_path = os.path.join(project, paths["routing-log"])
     summary = routing.summarize(log_path) if os.path.isfile(log_path) else None
+    events = config.events_path(cfg)
+    log = EventLog(os.path.join(project, events))
+    log.refresh()
     text = report.render(
         os.path.basename(project),
         head,
@@ -31,6 +35,9 @@ def main(argv, env=None, out=None, err=None):
         repo.open_prs(project, env),
         summary,
         paths["routing-log"],
+        agents=log,
+        now=now,
+        events_path=events,
     )
     out.write(text)
     return 0
