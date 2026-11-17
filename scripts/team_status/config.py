@@ -5,6 +5,8 @@ import re
 
 CONFIG_PATH = os.path.join(".claude", "team.json")
 TOOL = "claude-code"
+TOOLS = ("claude-code", "codex", "cursor", "gemini")
+TIER_NAMES = ("strongest", "strong", "standard", "fast")
 CORE_ROLES = ("lead", "builder", "code-reviewer", "security-reviewer", "plan-reviewer", "doc-recorder")
 REQUIRED_KEYS = ("version", "owner", "tiers", "roles", "checks", "owner-only", "paths")
 OPTIONAL_KEYS = ("specialists", "rules")
@@ -39,7 +41,8 @@ def validate(data):
     shape += ["unknown key: %s" % key for key in sorted(data) if key not in allowed]
     if shape:
         return shape
-    tiers, tier_problems = _tool_tiers(data["tiers"])
+    tiers = TIER_NAMES
+    tier_problems = _check_tiers(data["tiers"])
     problems = [] if type(data["version"]) is int and data["version"] == 1 else ["version must be 1"]
     problems += [] if _is_text(data["owner"]) else ["owner must be a non-empty string"]
     return (
@@ -58,12 +61,25 @@ def _is_text(value):
     return isinstance(value, str) and value.strip() != ""
 
 
-def _tool_tiers(tiers):
-    block = tiers.get(TOOL) if isinstance(tiers, dict) else None
-    if not isinstance(block, dict) or not block:
-        return {}, ["tiers.%s must map tier names to models" % TOOL]
-    bad = ["tiers.%s.%s must be a model name" % (TOOL, name) for name, model in block.items() if not _is_text(model)]
-    return block, bad
+def _check_tiers(tiers):
+    if not isinstance(tiers, dict) or not tiers:
+        return ["tiers must map at least one tool to its models"]
+    problems = []
+    for tool in sorted(tiers):
+        block = tiers[tool]
+        if tool not in TOOLS:
+            problems.append("unknown tool under tiers: %s" % tool)
+        elif not isinstance(block, dict):
+            problems.append("tiers.%s must map tier names to models" % tool)
+        else:
+            problems += ["tiers.%s is missing tier: %s" % (tool, name) for name in TIER_NAMES if name not in block]
+            problems += ["tiers.%s has unknown tier: %s" % (tool, name) for name in sorted(block) if name not in TIER_NAMES]
+            problems += [
+                "tiers.%s.%s must be a model name" % (tool, name)
+                for name in TIER_NAMES
+                if name in block and not _is_text(block[name])
+            ]
+    return problems
 
 
 def _check_roles(roles, tiers):
