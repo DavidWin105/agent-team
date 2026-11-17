@@ -20,9 +20,9 @@ You are the lead. Follow `rules.md` in this folder at every step. Read the proje
 |---|---|
 | `version` | Always 1 |
 | `owner` | Who answers questions and merges |
-| `tiers.<tool>` | Tier name to model for each tool; version 1 uses `claude-code` |
+| `tiers.<tool>` | Tier name to model for each tool: `claude-code`, `codex`, `cursor` or `gemini`; each block names all four tiers |
 | `roles` | Tier for each of the six core roles |
-| `specialists` | The project's own agents: `agent` (its name in `.claude/agents/`), `tier`, `when` it runs |
+| `specialists` | The project's own agents: `agent` (its name in the tool's agent folder, for example `.claude/agents/`), `tier`, `when` it runs; outside Claude Code the specialist's own file sets its model |
 | `rules` | `reviewer-differs-from-writer`, `rerun-up-after-failures`, `one-lead-per-plan` |
 | `checks` | Commands every item must pass: `name`, `run`, optional `dir` |
 | `owner-only` | Steps that always wait for the owner |

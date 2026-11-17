@@ -3,7 +3,7 @@ import argparse
 import os
 import sys
 
-from team_adapt import claude, project, write
+from team_adapt import claude, init, project, write
 from team_status import config
 
 CURSOR_READS_CODEX = (
@@ -16,12 +16,20 @@ def main(argv, out=sys.stdout, err=sys.stderr):
     parser = argparse.ArgumentParser(prog="team-adapt", description="Write Codex, Cursor and Gemini agent-team files.")
     parser.add_argument("project", nargs="?", default=".", help="project folder (default: current folder)")
     parser.add_argument("--plugin", action="store_true", help="regenerate this plugin's own Claude Code files")
+    parser.add_argument("--init", action="store_true", help="ask for tools and models, write .claude/team.json, then adapt")
     args = parser.parse_args(argv)
     if args.plugin:
         for rel in claude.write_plugin_files():
             print("wrote %s" % rel, file=out)
         return 0
-    return adapt(os.path.abspath(args.project), out, err)
+    project_dir = os.path.abspath(args.project)
+    if args.init:
+        try:
+            init.run_init(project_dir, out=lambda line: print(line, file=out))
+        except (EOFError, KeyboardInterrupt):
+            print("stopped: no answer, nothing written", file=err)
+            return 1
+    return adapt(project_dir, out, err)
 
 
 def adapt(project_dir, out, err):

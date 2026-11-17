@@ -33,6 +33,19 @@ Not yet run by the author. To check it yourself:
 3. In the first terminal, ask the lead to plan and run a two-item plan (for example, a `subtract` and a `multiply` function in separate files).
 4. Check that each agent appears, shows what it is doing, and ends as done.
 
+## Other tools (Codex, Cursor, Gemini)
+
+Not yet run in any of these tools. The same workflow runs inside Codex CLI, Cursor or Gemini CLI, with the whole team in one tool at a time.
+
+1. Clone this repository.
+2. Run `python3 -I agent-team/scripts/team-adapt --init <project-dir>`. It asks which tools you use and which model fills each tier (strongest, strong, standard, fast) for each, then writes `.claude/team.json` and the tool files:
+   - agents in `.codex/agents/`, `.cursor/agents/` or `.gemini/agents/`, one per role and tier, named for example `builder-standard`;
+   - the lead skill in `.agents/skills/agent-team/`;
+   - a marked block in `AGENTS.md` or `GEMINI.md`.
+3. Commit those files. After changing models, rerun `python3 -I agent-team/scripts/team-adapt <project-dir>`.
+
+`team-adapt` overwrites or deletes only files it wrote, and writes nothing if it finds a problem. The generated skill names this clone by its absolute path, so a teammate with the clone elsewhere reruns `team-adapt`. The live agent view works only in Claude Code. If you configure both Codex and Cursor, Cursor also reads `.codex/agents/`, so check which agent it starts. Design: `docs/specs/2026-11-17-multi-tool-adapters-design.md`.
+
 ## Tests
 
 ```bash
