@@ -44,7 +44,7 @@ The owner chose B.
 
 ### 6.1 Event log
 
-File: `paths.events` in `team.json`, default `.claude/team/events.jsonl`. One JSON object per line, appended; never rewritten.
+File: `paths.events` in `team.json`, default `.claude/team/events.jsonl`; it must be a relative path inside the project (no `..` part). One JSON object per line, appended; never rewritten.
 
 | Field | Meaning |
 |---|---|
@@ -54,7 +54,7 @@ File: `paths.events` in `team.json`, default `.claude/team/events.jsonl`. One JS
 | `agent` | role name without the `agent-team:` prefix (`builder`, `code-reviewer`, ...); a specialist uses its name |
 | `item` | the plan item, taken from the worktree folder name `.claude/worktrees/<slug>` in the hook's working directory; empty when the agent is not in a worktree |
 | `tool` | tool name (`Edit`, `Bash`, `Read`, ...); `tool` events only |
-| `target` | for `Edit`, `Write`, `Read`: the file path relative to the project; for `Bash`: the first word of the command only; otherwise empty |
+| `target` | for `Edit`, `Write`, `Read`: the file path relative to the project, or to the item's worktree for a file under `.claude/worktrees/<slug>/`; for `Bash`: the first word of the command only; otherwise empty. Control and line-break characters are replaced by `?` in every text field. |
 | `ok` | `stop` events: true unless Claude Code reports a failure |
 
 Only agents of the team are recorded: type starts with `agent-team:`, or equals a `specialists[].agent` in `team.json`. Anything else, including the lead's own tool calls, is ignored. The lead appears in the viewer as one row built from the session, only if the hooks give a clear way to know it; otherwise the lead is left out and the design says so (builder's call, section 9).
@@ -139,7 +139,7 @@ A reviewer read this design cold and asked nine questions. Answers already in th
 - **Current run:** the 30-minute gap rule is replaced by a marker. The lead's step 5 appends one `plan` event (`ts`, plan file name) when it starts the builders, by running `team-event --plan <file>`. The viewer shows events since the last `plan` event. If there is none, it shows everything and says so. A long wait can no longer hide a running agent.
 - **Row identity:** `agent_id` when the hook gives one. Without it, `agent` + `item`; two agents sharing both merge into one row, and the viewer says "2 agents share this row" rather than hiding it.
 - **Hook registration:** `hooks/hooks.json` at the default location, commands run `python3 -I`. The plugin version goes to 0.2.0 in `plugin.json` and `marketplace.json`.
-- **Ignored-log warning:** a one-time line when the viewer starts, using `git check-ignore`, only inside a git repository. `/team-init` is a prompt, so its `.gitignore` step is checked by the manual run only; `team-status` carries the tested warning.
+- **Ignored-log warning:** a `WARNING:` line in every `--watch` frame (both layouts) and in the snapshot, using `git check-ignore`, only inside a git repository and only once the log file exists (a stderr line was wiped by the first clear-screen). `/team-init` is a prompt, so its `.gitignore` step is checked by the manual run only; `team-status` carries the tested warning.
 - **Log growth:** the viewer remembers the file offset and reads only new lines each frame, folding them into the rows it already holds. No pruning in this version; a long-lived log is listed under risks.
 
 ## 11. Held for the owner

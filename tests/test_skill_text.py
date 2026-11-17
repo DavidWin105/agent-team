@@ -3,6 +3,7 @@ import os
 import re
 import unittest
 
+WATCH = 'python3 -I "${CLAUDE_PLUGIN_ROOT}/scripts/team-status" --watch <project folder>'
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 
 
@@ -24,7 +25,9 @@ class SkillTextTest(unittest.TestCase):
         build = step(self.skill, 5)
         self.assertIn("team-event", build)
         self.assertIn("--plan", build)
-        self.assertIn("team-status --watch", build)
+        self.assertIn(WATCH, build)
+        self.assertIn("resolved", build)
+        self.assertNotIn("`team-status --watch`", build)
         self.assertNotIn("so every agent gets a card", build)
 
     def test_paths_row_mentions_events(self):
@@ -32,13 +35,17 @@ class SkillTextTest(unittest.TestCase):
         self.assertIn("events", row)
 
     def test_summary_suggests_watch(self):
-        self.assertIn("--watch", step(self.skill, 11))
+        summary = step(self.skill, 11)
+        self.assertIn(WATCH, summary)
+        self.assertNotIn("`team-status --watch`", summary)
 
     def test_team_init_gitignores_team_folder(self):
         self.assertIn(".claude/team/", read("commands", "team-init.md"))
 
     def test_readme_mentions_watch(self):
-        self.assertIn("--watch", read("README.md"))
+        readme = read("README.md")
+        self.assertIn("`python3 -I agent-team/scripts/team-status --watch <project-dir>`", readme)
+        self.assertNotIn("`team-status --watch`", readme)
 
     def test_first_design_doc_points_to_live_view(self):
         text = read("docs", "specs", "2026-11-17-agent-team-plugin-design.md")

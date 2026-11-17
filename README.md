@@ -18,11 +18,11 @@ In Claude Code:
 1. `/team-init` writes `.claude/team.json`.
 2. Ask the lead to plan a task; approve the plan; ask it to run the plan.
 3. `/team-status`, or from a clone of this repository in any terminal: `python3 -I agent-team/scripts/team-status <project-dir>`.
-4. `team-status --watch` (run it in a second terminal) shows every agent live. [claude-flightdeck](https://github.com/scasella/claude-flightdeck) is an optional alternative: `/flightdeck` shows one session's agents.
+4. `python3 -I agent-team/scripts/team-status --watch <project-dir>` (run it in a second terminal) shows every agent live. [claude-flightdeck](https://github.com/scasella/claude-flightdeck) is an optional alternative: `/flightdeck` shows one session's agents.
 
 ### What the live view shows and does not
 
-It shows each team agent's role, item, state, what it is doing and its tool calls, recorded by hooks. It records only tool names, project-relative file paths and the first word of a Bash command (never file contents, other command text or output; a command that starts with a `VAR=value` word is logged with no name). Hooks cannot tell that an agent failed, so a stopped agent shows as done. The hook field names are documented, not yet observed in a real run.
+It shows each team agent's role, item, state, what it is doing and its tool calls, recorded by hooks. It records only tool names, file paths relative to the project (or to a builder's worktree) and the first word of a Bash command (never file contents, other command text or output; a command that starts with a `VAR=value` word is logged with no name). Hooks cannot tell that an agent failed, so a stopped agent shows as done; a failed tool call shows as, for example, `Bash (failed)`. The hook field names are documented, not yet observed in a real run.
 
 ### Checking the live view
 

@@ -49,7 +49,7 @@ Find the default branch with `git symbolic-ref --short refs/remotes/origin/HEAD`
 
 Before any action from here to step 9, check it against `owner-only` in `team.json`. If it matches (for example a merge, a migration, a deploy or a new dependency), do not do it: stop that item, say what is held, and continue the other items.
 
-Run `python3 -I "${CLAUDE_PLUGIN_ROOT}/scripts/team-event" --plan <plan file>`, then tell the owner they can run `team-status --watch` in a second terminal to see every agent live (Flightdeck is optional and shows only the current session). Then start one `agent-team:builder` per item, in parallel, each with:
+Run `python3 -I "${CLAUDE_PLUGIN_ROOT}/scripts/team-event" --plan <plan file>`, then tell the owner they can see every agent live by running, in a second terminal, `python3 -I "${CLAUDE_PLUGIN_ROOT}/scripts/team-status" --watch <project folder>`. Print it with `${CLAUDE_PLUGIN_ROOT}` and the project folder resolved to real absolute paths, because the owner's terminal has neither (`team-status` alone is not a command there). Flightdeck is optional and shows only the current session. Then start one `agent-team:builder` per item, in parallel, each with:
 
 - the item's section from the plan, its worktree path (`git worktree add .claude/worktrees/<slug> -b <branch> <default-branch>`) and branch name;
 - the file set, and the rule that it touches nothing else;
@@ -78,4 +78,4 @@ Once the last pull request is open, add one row per agent run to `paths.routing-
 
 ## 11. Summary
 
-End with: the pull requests opened; what each reviewer found and what you fixed; anything held for the owner; what you skipped and what you did not check. Suggest `/team-status`, and `team-status --watch` while a plan runs.
+End with: the pull requests opened; what each reviewer found and what you fixed; anything held for the owner; what you skipped and what you did not check. Suggest `/team-status`, and while a plan runs `python3 -I "${CLAUDE_PLUGIN_ROOT}/scripts/team-status" --watch <project folder>`, printed with both paths resolved as in step 5.
