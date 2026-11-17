@@ -82,10 +82,44 @@ class ValidateTest(unittest.TestCase):
         data["roles"]["tester"] = "standard"
         self.assertEqual(config.validate(data), ["missing role: doc-recorder", "unknown role: tester"])
 
-    def test_missing_tool_block(self):
+    def test_cursor_only_config_is_valid(self):
         data = valid_config()
-        data["tiers"] = {"cursor": {"strong": "x"}}
-        self.assertIn("tiers.claude-code must map tier names to models", config.validate(data))
+        data["tiers"] = {"cursor": {"strongest": "a", "strong": "b", "standard": "c", "fast": "d"}}
+        self.assertEqual(config.validate(data), [])
+
+    def test_tool_block_missing_tiers(self):
+        data = valid_config()
+        data["tiers"] = {"cursor": {"strong": "x", "strongest": "y"}}
+        self.assertEqual(
+            config.validate(data),
+            ["tiers.cursor is missing tier: standard", "tiers.cursor is missing tier: fast"],
+        )
+
+    def test_unknown_tool_under_tiers(self):
+        data = valid_config()
+        data["tiers"]["cursr"] = data["tiers"]["claude-code"]
+        self.assertEqual(config.validate(data), ["unknown tool under tiers: cursr"])
+
+    def test_unknown_tier_name_in_a_block(self):
+        data = valid_config()
+        data["tiers"]["claude-code"]["turbo"] = "x"
+        self.assertEqual(config.validate(data), ["tiers.claude-code has unknown tier: turbo"])
+
+    def test_tier_model_must_be_text(self):
+        data = valid_config()
+        data["tiers"]["claude-code"]["fast"] = 3
+        self.assertEqual(config.validate(data), ["tiers.claude-code.fast must be a model name"])
+
+    def test_tiers_must_name_a_tool(self):
+        self.assertEqual(
+            config.validate({**valid_config(), "tiers": {}}),
+            ["tiers must map at least one tool to its models"],
+        )
+
+    def test_tool_block_must_be_an_object(self):
+        data = valid_config()
+        data["tiers"]["codex"] = "gpt"
+        self.assertEqual(config.validate(data), ["tiers.codex must map tier names to models"])
 
     def test_specialist_needs_known_tier_and_fields(self):
         data = valid_config()

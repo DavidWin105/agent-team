@@ -69,6 +69,25 @@ class SkillTextTest(unittest.TestCase):
         self.assertIn("live-agent-view-design.md", text)
         self.assertNotIn("No monitor of our own", text)
 
+    def test_tiers_row_names_every_tool(self):
+        row = [l for l in self.skill.splitlines() if l.startswith("| `tiers.<tool>`")][0]
+        for tool in ("claude-code", "codex", "cursor", "gemini", "all four tiers"):
+            self.assertIn(tool, row)
+
+    def test_specialists_row_says_own_file_sets_model(self):
+        row = [l for l in self.skill.splitlines() if l.startswith("| `specialists`")][0]
+        self.assertIn("own file sets its model", row)
+
+    def test_team_init_offers_other_tools(self):
+        text = read("commands", "team-init.md")
+        self.assertIn("scripts/team-adapt", text)
+        self.assertIn("codex", text)
+
+    def test_readme_explains_other_tools(self):
+        readme = read("README.md")
+        self.assertIn("## Other tools (Codex, Cursor, Gemini)", readme)
+        self.assertIn("team-adapt --init <project-dir>", readme)
+
 
 if __name__ == "__main__":
     unittest.main()
