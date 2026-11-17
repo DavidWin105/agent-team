@@ -2,6 +2,10 @@
 
 A Claude Code plugin: an AI agent team with a model per role, one workflow from plan to pull request, steps only the owner may take, and a `team-status` command for the terminal.
 
+![Mock-up of the live view](docs/media/live-view-preview-cards.png)
+
+*Mock-up of the live view (the `--watch` mode of team-status) with made-up data, not a screenshot of a real run.*
+
 The design is `docs/specs/2026-11-17-agent-team-plugin-design.md`.
 
 ## Install (once per machine)
