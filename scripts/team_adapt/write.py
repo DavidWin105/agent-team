@@ -8,15 +8,20 @@ END = "<!-- agent-team:end -->"
 
 
 def with_block(text, block):
-    """Answer text with the agent-team block replaced, or appended if absent."""
+    """Answer text with the agent-team block replaced, or appended if absent; block None removes it."""
     start, end = text.find(START), text.find(END)
-    full = START + "\n" + block + END
     if start != -1 and end > start:
-        return text[:start] + full + text[end + len(END):]
+        if block is None:
+            rest = text[end + len(END):]
+            return text[:start] + (rest[1:] if rest.startswith("\n") else rest)
+        return text[:start] + START + "\n" + block + END + text[end + len(END):]
     if start != -1 and end != -1:
         raise ValueError("has the agent-team markers out of order")
     if start != -1 or end != -1:
         raise ValueError("has only one of the agent-team markers")
+    if block is None:
+        return text
+    full = START + "\n" + block + END
     gap = "" if not text else ("\n" if text.endswith("\n") else "\n\n")
     return text + gap + full + "\n"
 
@@ -36,9 +41,13 @@ def _outside(project_dir, rel):
     return not real.startswith(os.path.realpath(project_dir) + os.sep)
 
 
-def plan_changes(project_dir, files, blocks, generated_dirs):
-    """Answer (writes, deletes, problems) without touching the disk."""
+def plan_changes(project_dir, files, blocks, generated_dirs, instruction_files=()):
+    """Answer (writes, deletes, problems) without touching the disk.
+
+    An instruction file in instruction_files but not in blocks loses its agent-team block.
+    """
     writes, problems = {}, []
+    blocks = dict({rel: None for rel in instruction_files}, **blocks)
     for rel, text in sorted(files.items()):
         if _outside(project_dir, rel):
             problems.append("%s is outside the project" % rel)
@@ -53,10 +62,14 @@ def plan_changes(project_dir, files, blocks, generated_dirs):
         writes[rel] = text
     for rel, block in sorted(blocks.items()):
         if _outside(project_dir, rel):
-            problems.append("%s is outside the project" % rel)
+            if block is not None:  # a file only cleaned up is skipped: team-adapt never writes outside the project
+                problems.append("%s is outside the project" % rel)
             continue
         try:
-            writes[rel] = with_block(_read(os.path.join(project_dir, rel)) or "", block)
+            current = _read(os.path.join(project_dir, rel)) or ""
+            text = with_block(current, block)
+            if text != current or block is not None:
+                writes[rel] = text
         except (OSError, UnicodeDecodeError):
             problems.append("%s cannot be read" % rel)
         except ValueError as error:

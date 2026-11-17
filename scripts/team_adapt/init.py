@@ -14,12 +14,16 @@ def _ask_text(ask, prompt):
             return answer
 
 
-def _ask_tools(ask):
-    prompt = "Tools you use (%s), comma separated: " % ", ".join(config.TOOLS)
+def _ask_tools(ask, out):
+    allowed = ", ".join(config.TOOLS)
+    prompt = "Tools you use (%s), comma separated: " % allowed
     while True:
         tools = [tool.strip() for tool in ask(prompt).split(",") if tool.strip()]
-        if tools and all(tool in config.TOOLS for tool in tools):
+        unknown = [tool for tool in tools if tool not in config.TOOLS]
+        if tools and not unknown:
             return list(dict.fromkeys(tools))
+        if unknown:
+            out("unknown tool: %s; allowed: %s" % (", ".join(unknown), allowed))
 
 
 def _ask_checks(ask):
@@ -32,12 +36,12 @@ def _ask_checks(ask):
             return checks
 
 
-def build_config(ask, template):
+def build_config(ask, template, out=print):
     """Answer a new config: the template with the owner's tools, models, owner, checks and paths."""
     cfg = copy.deepcopy(template)
     cfg["tiers"] = {
         tool: {tier: _ask_text(ask, "%s model for the %s tier: " % (tool, tier)) for tier in config.TIER_NAMES}
-        for tool in _ask_tools(ask)
+        for tool in _ask_tools(ask, out)
     }
     cfg["owner"] = _ask_text(ask, "Owner name: ")
     cfg["checks"] = _ask_checks(ask)
@@ -56,7 +60,7 @@ def run_init(project_dir, ask=input, out=print):
         return False
     with open(os.path.join(source.REPO_ROOT, "templates", "team.json"), encoding="utf-8") as handle:
         template = json.load(handle)
-    cfg = build_config(ask, template)
+    cfg = build_config(ask, template, out)
     problems = config.validate(cfg)
     if problems:
         for problem in problems:

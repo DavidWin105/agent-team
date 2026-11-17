@@ -5,10 +5,10 @@ import os
 import shutil
 import tempfile
 import unittest
-from unittest import mock
 
 from fixtures import make_project, valid_config
-from team_adapt import cli, init
+from team_adapt import cli
+from team_status import config
 from team_status.config import TIER_NAMES
 from test_adapt_init import CURSOR_RUN
 
@@ -20,10 +20,16 @@ def config_with(*tools):
     return cfg
 
 
-def answer_prompts(*replies):
-    """Patch run_init's default ask: it was bound to builtins.input at definition time, so patching input misses it."""
-    fake_ask = mock.Mock(side_effect=list(replies))
-    return mock.patch.object(init.run_init, "__defaults__", (fake_ask,) + init.run_init.__defaults__[1:])
+def mock_ask(replies):
+    """Answer each prompt with the next reply, raising it when it is an exception."""
+    queue = list(replies)
+
+    def ask(prompt):
+        reply = queue.pop(0)
+        if isinstance(reply, BaseException):
+            raise reply
+        return reply
+    return ask
 
 
 class AdaptTest(unittest.TestCase):
@@ -105,6 +111,21 @@ class AdaptTest(unittest.TestCase):
         self.assertIn("deleted .cursor/agents/builder-standard.md", out)
         self.assertTrue(self.exists(root, ".gemini", "agents", "builder-standard.md"))
 
+    def test_dropped_tool_block_is_removed_and_owner_text_kept(self):
+        root = self.project(config_with("cursor", "gemini"))
+        with open(os.path.join(root, "AGENTS.md"), "w") as handle:
+            handle.write("# Owner notes\n")
+        self.run_adapt(root)
+        with open(os.path.join(root, ".claude", "team.json"), "w") as handle:
+            json.dump(config_with("gemini"), handle)
+        code, out, err = self.run_adapt(root)
+        self.assertEqual(code, 0, err)
+        with open(os.path.join(root, "AGENTS.md")) as handle:
+            self.assertEqual(handle.read(), "# Owner notes\n\n")
+        self.assertIn("wrote AGENTS.md", out)
+        with open(os.path.join(root, "GEMINI.md")) as handle:
+            self.assertIn("<!-- agent-team:start -->", handle.read())
+
     def test_codex_and_cursor_together_warn(self):
         code, out, err = self.run_adapt(self.project(config_with("codex", "cursor")))
         self.assertEqual(code, 0)
@@ -122,25 +143,23 @@ class InitFlagTest(unittest.TestCase):
         self.addCleanup(shutil.rmtree, root)
         return root
 
-    def run_init_flag(self, root):
+    def run_init_flag(self, root, *replies):
         out, err = io.StringIO(), io.StringIO()
-        code = cli.main(["--init", root], out=out, err=err)
+        code = cli.main(["--init", root], out=out, err=err, ask=mock_ask(replies))
         return code, out.getvalue(), err.getvalue()
 
     def test_stopped_answer_writes_nothing(self):
         for stop in (EOFError(), KeyboardInterrupt()):
             with self.subTest(stop=type(stop).__name__):
                 root = self.fresh_folder()
-                with answer_prompts(stop):
-                    code, out, err = self.run_init_flag(root)
+                code, out, err = self.run_init_flag(root, stop)
                 self.assertEqual(code, 1)
                 self.assertIn("stopped: no answer, nothing written", err)
                 self.assertFalse(os.path.exists(os.path.join(root, ".claude", "team.json")))
 
     def test_valid_answers_write_team_json_then_adapt(self):
         root = self.fresh_folder()
-        with answer_prompts(*CURSOR_RUN):
-            code, out, err = self.run_init_flag(root)
+        code, out, err = self.run_init_flag(root, *CURSOR_RUN)
         self.assertEqual(code, 0, err)
         self.assertTrue(os.path.exists(os.path.join(root, ".claude", "team.json")))
         self.assertTrue(os.path.exists(os.path.join(root, ".cursor", "agents", "builder-standard.md")))
@@ -152,11 +171,15 @@ class InitFlagTest(unittest.TestCase):
             with self.subTest(reply=reply):
                 root = make_project(config=config_with("cursor"), commit=False)
                 self.addCleanup(shutil.rmtree, root)
-                with answer_prompts(reply):
-                    code, out, err = self.run_init_flag(root)
+                code, out, err = self.run_init_flag(root, reply)
                 self.assertEqual(code, 0, err)
                 self.assertIn("kept .claude/team.json", out)
                 self.assertTrue(os.path.exists(os.path.join(root, ".cursor", "agents", "builder-standard.md")))
+
+    def test_unknown_tool_prints_the_allowed_tools_before_asking_again(self):
+        code, out, err = self.run_init_flag(self.fresh_folder(), "vim", *CURSOR_RUN)
+        self.assertEqual(code, 0, err)
+        self.assertIn("unknown tool: vim; allowed: %s" % ", ".join(config.TOOLS), out)
 
 
 if __name__ == "__main__":

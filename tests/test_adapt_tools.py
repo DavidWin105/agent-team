@@ -83,6 +83,11 @@ class ProjectOutputsTest(unittest.TestCase):
         self.assertIn(source.REPO_ROOT + "/scripts/team-status", skill)
         self.assertIn(source.REPO_ROOT + "/templates/plan.md", skill)
 
+    def test_roles_name_no_claude_tool(self):
+        for role in source.read_roles(source.REPO_ROOT):
+            with self.subTest(role=role.name):
+                self.assertNotIn("Bash", role.body)
+
     def test_rules_copy_has_html_marker(self):
         rules = self.files[os.path.join(project.SKILL_DIR, "rules.md")]
         self.assertTrue(rules.startswith("<!-- " + marker.SIGNATURE))

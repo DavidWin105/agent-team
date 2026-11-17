@@ -6,6 +6,7 @@ from team_status.config import TIER_NAMES
 
 MODULES = {"codex": codex, "cursor": cursor, "gemini": gemini}
 SKILL_DIR = os.path.join(".agents", "skills", "agent-team")
+INSTRUCTION_FILES = tuple(sorted({module.INSTRUCTIONS for module in MODULES.values()}))
 GENERATED_DIRS = tuple(module.AGENT_DIR for module in MODULES.values()) + (SKILL_DIR,)
 INSTRUCTION_BLOCK = (
     "## agent-team\n\n"

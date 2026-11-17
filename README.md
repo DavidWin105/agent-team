@@ -60,7 +60,7 @@ Not yet run in any of these tools. The same workflow runs inside Codex CLI, Curs
    - a marked block in `AGENTS.md` or `GEMINI.md`.
 3. Commit those files. After changing models, rerun `python3 -I agent-team/scripts/team-adapt <project-dir>`.
 
-`team-adapt` overwrites or deletes only files it wrote, and writes nothing if it finds a problem. The generated skill names this clone by its absolute path, so a teammate with the clone elsewhere reruns `team-adapt`. The live agent view works only in Claude Code. If you configure both Codex and Cursor, Cursor also reads `.codex/agents/`, so check which agent it starts. Design: `docs/specs/2026-11-17-multi-tool-adapters-design.md`.
+`team-adapt` overwrites or deletes only files it wrote, and writes nothing if it finds a problem. The generated `.agents/skills/agent-team/SKILL.md` names this clone by its absolute path. That path includes your user name and differs per machine, so a teammate with the clone elsewhere reruns `team-adapt`. The live agent view works only in Claude Code. If you configure both Codex and Cursor, Cursor also reads `.codex/agents/`, so check which agent it starts. Design: `docs/specs/2026-11-17-multi-tool-adapters-design.md`.
 
 ## Tests
 

@@ -32,7 +32,9 @@ class BuildConfigTest(unittest.TestCase):
 
     def test_unknown_tool_and_empty_answers_are_asked_again(self):
         replies = ["vim", "", "gemini", "", "a", "b", "c", "d", "O", "", "t", "", "make", "", "p/", ""]
-        cfg = init.build_config(answers(*replies), template())
+        lines = []
+        cfg = init.build_config(answers(*replies), template(), lines.append)
+        self.assertEqual(lines, ["unknown tool: vim; allowed: claude-code, codex, cursor, gemini"])
         self.assertEqual(list(cfg["tiers"]), ["gemini"])
         self.assertEqual(cfg["tiers"]["gemini"]["strongest"], "a")
         self.assertEqual(cfg["checks"], [{"name": "t", "run": "make"}])

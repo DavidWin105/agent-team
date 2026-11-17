@@ -26,6 +26,10 @@ class WithBlockTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             write.with_block("top\n" + write.START + "\n", BLOCK)
 
+    def test_no_block_removes_it_and_keeps_outside_text(self):
+        old = "top\n" + write.START + "\nold\n" + write.END + "\nbottom\n"
+        self.assertEqual(write.with_block(old, None), "top\nbottom\n")
+
 
 class PlanChangesTest(unittest.TestCase):
     def setUp(self):
@@ -54,6 +58,16 @@ class PlanChangesTest(unittest.TestCase):
         writes, deletes, problems = write.plan_changes(self.root, {}, {}, ("d",))
         self.assertEqual(deletes, [os.path.join("d", "stale.md")])
 
+    def test_block_of_an_unconfigured_instruction_file_is_removed(self):
+        self.put("AGENTS.md", "# Mine\n\n" + FULL + "\n")
+        writes, deletes, problems = write.plan_changes(self.root, {}, {}, (), ("AGENTS.md", "GEMINI.md"))
+        self.assertEqual((writes, deletes, problems), ({"AGENTS.md": "# Mine\n\n"}, [], []))
+
+    def test_unconfigured_instruction_file_without_a_block_is_left_alone(self):
+        self.put("AGENTS.md", "# Mine\n")
+        writes, deletes, problems = write.plan_changes(self.root, {}, {}, (), ("AGENTS.md", "GEMINI.md"))
+        self.assertEqual((writes, deletes, problems), ({}, [], []))
+
     def test_half_block_is_a_problem(self):
         self.put("AGENTS.md", write.END + "\n")
         writes, deletes, problems = write.plan_changes(self.root, {}, {"AGENTS.md": BLOCK}, ())
@@ -76,6 +90,14 @@ class PlanChangesTest(unittest.TestCase):
         os.symlink(target, os.path.join(self.root, "AGENTS.md"))
         writes, deletes, problems = write.plan_changes(self.root, {}, {"AGENTS.md": BLOCK}, ())
         self.assertEqual(problems, ["AGENTS.md is outside the project"])
+
+    def test_unconfigured_symlinked_instruction_file_outside_the_project_is_skipped(self):
+        target = os.path.join(self.outside(), "AGENTS.md")
+        with open(target, "w", encoding="utf-8") as handle:
+            handle.write(FULL + "\n")
+        os.symlink(target, os.path.join(self.root, "AGENTS.md"))
+        writes, deletes, problems = write.plan_changes(self.root, {}, {}, (), ("AGENTS.md",))
+        self.assertEqual((writes, deletes, problems), ({}, [], []))
 
     def test_symlinked_folder_outside_the_project_is_a_problem(self):
         os.symlink(self.outside(), os.path.join(self.root, "d"))

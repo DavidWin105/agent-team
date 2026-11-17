@@ -158,6 +158,7 @@ In every error case, `team-adapt` writes nothing at all, never a partial set.
 - **Target file without the marker:** lists every such file and exits 1.
 - **Target outside the project** (through a symlinked file or folder): lists every such path and exits 1.
 - **Tool or tier removed from `team.json`:** deletes only stale files that carry the marker, prints each path it deleted, and exits 0.
+- **Tool removed so no configured tool writes `AGENTS.md` or `GEMINI.md`:** removes the marked block from that file, keeps the text outside the block unchanged, prints the path, and exits 0. A file without the block, or one that resolves outside the project, is left alone.
 - **Codex and Cursor both configured:** prints a warning that Cursor also reads `.codex/agents/` and may load agents with Codex model IDs, then exits 0.
 
 ## 11. Testing

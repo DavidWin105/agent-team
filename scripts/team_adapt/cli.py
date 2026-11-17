@@ -12,7 +12,7 @@ CURSOR_READS_CODEX = (
 )
 
 
-def main(argv, out=sys.stdout, err=sys.stderr):
+def main(argv, out=sys.stdout, err=sys.stderr, ask=input):
     parser = argparse.ArgumentParser(prog="team-adapt", description="Write Codex, Cursor and Gemini agent-team files.")
     parser.add_argument("project", nargs="?", default=".", help="project folder (default: current folder)")
     parser.add_argument("--plugin", action="store_true", help="regenerate this plugin's own Claude Code files")
@@ -25,7 +25,7 @@ def main(argv, out=sys.stdout, err=sys.stderr):
     project_dir = os.path.abspath(args.project)
     if args.init:
         try:
-            init.run_init(project_dir, out=lambda line: print(line, file=out))
+            init.run_init(project_dir, ask=ask, out=lambda line: print(line, file=out))
         except (EOFError, KeyboardInterrupt):
             print("stopped: no answer, nothing written", file=err)
             return 1
@@ -39,7 +39,7 @@ def adapt(project_dir, out, err):
             print("team.json: %s" % problem, file=err)
         return 1
     files, blocks = project.project_outputs(cfg)
-    writes, deletes, problems = write.plan_changes(project_dir, files, blocks, project.GENERATED_DIRS)
+    writes, deletes, problems = write.plan_changes(project_dir, files, blocks, project.GENERATED_DIRS, project.INSTRUCTION_FILES)
     if problems:
         for problem in problems:
             print(problem, file=err)
