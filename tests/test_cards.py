@@ -19,9 +19,23 @@ def event(ts="2026-11-17T14:02:09Z", kind="tool", agent="builder", tool="Edit", 
     return Event(ts, kind, "a1", agent, "subtract", tool, target, "pre", None)
 
 
-def draw(rows, recent=(), waiting=(), width=120, color=False, lead=LEAD, notes=(), warning=None):
+def draw(rows, recent=(), waiting=(), width=120, color=False, lead=LEAD, notes=(), warning=None, height=None, plan=None,
+         clock=None):
     return cards.render(rows, list(recent), valid_config(), lead, list(waiting), width, color,
-                        notes=list(notes), warning=warning)
+                        notes=list(notes), warning=warning, height=height, plan=plan, clock=clock)
+
+
+BORDERS = "│┌┐└┘"
+
+
+def border_columns(line):
+    """Answer the display columns of the box border characters in a line."""
+    columns, col = [], 0
+    for char in line:
+        if char in BORDERS:
+            columns.append(col)
+        col += cards.display_width(char)
+    return columns
 
 
 class CardsTest(unittest.TestCase):
@@ -129,6 +143,121 @@ class CardsTest(unittest.TestCase):
         card = [line for line in out if line.count("│") == 8]
         self.assertTrue(card)
         self.assertEqual(len({len(line) for line in card}), 1)
+
+    def test_header_shows_plan_name_and_clock(self):
+        out = draw([row()], plan="plans/2026-11-17-calc.md", clock="14:02:11", warning="WARNING: x")
+        self.assertTrue(out[0].startswith("AGENT TEAM · plan: plans/2026-11-17-calc.md"), out[0])
+        self.assertTrue(out[0].endswith("14:02:11"), out[0])
+        self.assertEqual(cards.display_width(out[0]), 120)
+        self.assertEqual(out[1], "WARNING: x")
+        no_plan = draw([row()], clock="14:02:11")
+        self.assertTrue(no_plan[0].startswith("AGENT TEAM "), no_plan[0])
+        self.assertNotIn("plan:", no_plan[0])
+        colored = draw([row()], plan="p" * 300, clock="14:02:11", color=True)
+        self.assertLessEqual(cards.display_width(colored[0]), 120)
+        self.assertTrue(ANSI.sub("", colored[0]).endswith("14:02:11"))
+
+    def test_dispatch_box_hidden_without_builders(self):
+        self.assertIn("Dispatch builders", self.text([row(), row(agent="code-reviewer")]))
+        out = self.text([row(agent="code-reviewer"), row(agent="doc-recorder")])
+        self.assertNotIn("Dispatch builders", out)
+        self.assertNotIn("one per item", out)
+        self.assertIn("code-reviewer · opus", out)
+        self.assertIn("back to lead", out)
+
+    def tall(self):
+        rows = [row(item="item%02d" % n) for n in range(12)]
+        recent = [event(target="logfile%d" % n) for n in range(5)]
+        return rows, recent
+
+    def test_tall_screen_drops_log_then_cards(self):
+        rows, recent = self.tall()
+        full = draw(rows, recent, ["merge #7"])
+        self.assertIn("logfile0", "\n".join(full))
+        less = draw(rows, recent, ["merge #7"], height=len(full) - 1)
+        self.assertLessEqual(len(less), len(full) - 1)
+        self.assertNotIn("logfile", "\n".join(less))
+        self.assertIn("item11", "\n".join(less))
+        self.assertNotIn("more agents", "\n".join(less))
+        small = draw(rows, recent, ["merge #7"], height=len(full) - 12)
+        joined = "\n".join(small)
+        self.assertLessEqual(len(small), len(full) - 12)
+        self.assertNotIn("logfile", joined)
+        self.assertIn("item03", joined)
+        self.assertNotIn("item04", joined)
+        self.assertIn("+8 more agents (use a taller terminal)", small)
+        self.assertIn("back to lead", joined)
+        self.assertIn("WAITING ON YOU", small[-2])
+
+    def test_tall_screen_keeps_waiting_box(self):
+        rows, recent = self.tall()
+        full = draw(rows, recent, ["merge #7"], plan="p.md", clock="14:02:11")
+        fixed = len(full) - 21 - 5  # three card rows and the log
+        out = draw(rows, recent, ["merge #7"], plan="p.md", clock="14:02:11", height=fixed + 8)
+        joined = "\n".join(out)
+        self.assertEqual(len(out), fixed + 8)
+        self.assertIn("+8 more agents (use a taller terminal)", out)
+        self.assertIn("item03", joined)
+        self.assertNotIn("item04", joined)
+        self.assertIn("back to lead · verify · open PRs", joined)
+        self.assertIn("WAITING ON YOU   merge #7", out[-2])
+        self.assertTrue(out[-1].startswith("└"))
+        self.assertIsNone(draw(rows, recent, ["merge #7"], height=10))
+
+    def test_short_screen_falls_back_to_table(self):
+        builders = [row(item="item%d" % n) for n in range(5)]
+        self.assertIsNone(draw(builders, [event()], ["merge #7"], plan="p.md", clock="14:02:11", height=24))
+        out = draw(builders, [event()], ["merge #7"], plan="p.md", clock="14:02:11", height=25)
+        self.assertEqual(len(out), 25)
+        self.assertEqual(len([line for line in out if line.count("┌") == 4]), 1)
+        self.assertIn("+1 more agents (use a taller terminal)", out)
+        self.assertIsNone(draw([row()], plan="p.md", clock="14:02:11", height=20))
+        self.assertIsNone(draw([], plan="p.md", clock="14:02:11", height=5))
+        self.assertIsNotNone(draw([], plan="p.md", clock="14:02:11", height=0))
+        self.assertIsNotNone(draw([], plan="p.md", clock="14:02:11", height=12))
+
+    def test_unknown_height_drops_nothing(self):
+        rows, recent = self.tall()
+        full = draw(rows, recent, ["merge #7"])
+        self.assertEqual(draw(rows, recent, ["merge #7"], height=0), full)
+        self.assertNotIn("more agents", "\n".join(full))
+        self.assertEqual(len([line for line in full if line.count("┌") == 4]), 3)
+
+    def test_display_width_wide_and_combining(self):
+        self.assertEqual(cards.display_width("abc"), 3)
+        self.assertEqual(cards.display_width("日本語"), 6)
+        self.assertEqual(cards.display_width("ＡＢ"), 4)  # fullwidth
+        self.assertEqual(cards.display_width("😀"), 2)
+        self.assertEqual(cards.display_width("cafe\u0301"), 4)
+        self.assertEqual(cards.display_width("a\u200bb"), 2)
+        self.assertEqual(cards.display_width("\x1b[1;38;5;75m日本\x1b[0m"), 4)
+        self.assertEqual(cards.display_width("…"), 1)
+        self.assertEqual(cards.display_width(""), 0)
+
+    def test_wide_characters_keep_box_aligned_at_widths_100_120_200(self):
+        wide = "日本語のアイテム名前" * 3
+        rows = [row(item=wide, doing="Edit src/日本語 notes/cafe\u0301.py 😀" * 3),
+                row(agent="security-reviewer", item="cafe\u0301" * 30, doing="Read ＡＢＣ" * 20),
+                row(item="i😀" * 40)] * 2
+        recent = [event(target="src/日本語/" * 30), event(agent="日本語", target="x")]
+        for width in (100, 120, 200):
+            for color in (False, True):
+                out = draw(rows, recent, ["plan 日本語: still Draft " * 10], width=width, color=color,
+                           lead="日本語 " * 40, plan="計画" * 80, clock="14:02:11")
+                for line in out:
+                    self.assertLessEqual(cards.display_width(line), width, (width, line))
+                plain = [ANSI.sub("", line) for line in out]
+                card_lines = [line for line in plain if line.count("│") == 8 or line.count("┌") == 4 or line.count("└") == 4]
+                self.assertTrue(card_lines)
+                self.assertEqual(len({tuple(border_columns(line)) for line in card_lines}), 1, (width, card_lines))
+                waiting = plain[-3:]
+                self.assertEqual({tuple(border_columns(line)) for line in waiting}, {(0, width - 1)}, waiting)
+                self.assertEqual({cards.display_width(line) for line in waiting}, {width})
+
+    def test_clip_never_cuts_a_wide_character(self):
+        self.assertEqual(cards._clip("日本語", 4), "日…")
+        self.assertEqual(cards._clip("日本語", 6), "日本語")
+        self.assertEqual(cards.display_width(cards._pad("日本語", 5)), 5)
 
 
 class CardsFromLogTest(unittest.TestCase):

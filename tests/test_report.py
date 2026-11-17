@@ -56,7 +56,7 @@ class AgentsSectionTest(unittest.TestCase):
             lines.append(ev("10:07:%02d" % n, "tool", tool="Read", target="a.py", phase="pre"))
         lines.append(ev("10:09:50", "tool", tool="Edit", target="test_calc.py", phase="pre"))
         text = self.agents(lines)
-        self.assertIn("AGENTS\n", text)
+        self.assertIn("AGENTS   plan: p\n", text)
         self.assertIn("  subtract  builder        \u25b6 Edit test_calc.py  3m12s  12 calls\n", text)
 
     def test_done_failed_silent(self):
@@ -126,6 +126,16 @@ class AgentsSectionTest(unittest.TestCase):
         self.assertNotIn("\x07", text)
         self.assertNotIn("\n  multiply  builder", text)
         self.assertIn("\u25b6 Edit x?]0;PWNED??[2J?  multiply  builder  \u2713 done.py  0m10s  1 call\n", text)
+
+    def test_header_shows_plan_name_and_clock(self):
+        log = self.log([ev("10:00:00", "plan", target="plans/2026-11-17-calc.md", agent_id=""), ev("10:09:50", "start")])
+        text = render("demo", HEAD, PLANS, [], [], SUMMARY, "plans/log.md", agents=log, now=NOW, clock="14:02:11")
+        self.assertTrue(text.startswith("agent-team · demo · main abc1234 · 14:02:11\n"), text)
+        self.assertIn("\nAGENTS   plan: plans/2026-11-17-calc.md\n", text)
+        plain = render("demo", HEAD, PLANS, [], [], SUMMARY, "plans/log.md", agents=log, now=NOW)
+        self.assertTrue(plain.startswith("agent-team · demo · main abc1234\n"))
+        self.assertIn("\nAGENTS   plan: plans/2026-11-17-calc.md\n", plain)
+        self.assertIn("\nAGENTS\n", self.agents([ev("10:08:00", "start")]))
 
     def test_agents_between_header_and_plans(self):
         text = self.agents(self.running())
