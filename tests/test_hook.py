@@ -101,18 +101,21 @@ class HookTest(unittest.TestCase):
             text = handle.read()
         return json.loads(text.splitlines()[-1])["target"], text
 
-    def test_bash_skips_leading_assignments(self):
-        target, text = self.bash_target("TOKEN=abc123 API_KEY=sk-SECRET1 npm test")
-        self.assertEqual(target, "npm")
-        self.assertNotIn("SECRET1", text)
-        self.assertNotIn("abc123", text)
-
-    def test_bash_quoted_assignment_gives_empty_target(self):
-        cases = ['K="sk-SECRET part2" npm test', "K='a b' cmd", "K=$(cat f) run", 'API_KEY="abc def" cmd',
-                 'K="a" npm test', 'K="a \\"b c\\" d" npm test', "K=`cat f` run", "K=(a b) run"]
-        for command in cases:
+    def test_bash_leading_assignment_gives_empty_target(self):
+        cases = [("TOKEN=abc123 npm test", "abc123"), ("K=\\ x y cmd", "x y"),
+                 ("K=a\\ sk-SECRET cmd", "SECRET"), ("K=${X:-a b} cmd", "a b"),
+                 ('K="sk-SECRET part2" npm test', "SECRET"), ("K='a b' cmd", "a b"),
+                 ("K=$(cat f) run", "cat"), ('A=1 K="x y" cmd', "x y")]
+        for command, secret in cases:
             target, text = self.bash_target(command)
             self.assertEqual(target, "", command)
+            self.assertNotIn(secret, text, command)
+            self.assertNotIn("npm", text, command)
+            os.remove(self.log)
+
+    def test_bash_first_word_cases(self):
+        for command, want in (("npm test", "npm"), ("/usr/bin/env FOO=1 cmd", "env"), ("echo hi", "echo")):
+            self.assertEqual(self.bash_target(command)[0], want, command)
 
     def test_bash_only_assignments_is_empty(self):
         self.assertEqual(self.bash_target("FOO=bar")[0], "")

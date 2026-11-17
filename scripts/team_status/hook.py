@@ -14,7 +14,6 @@ PATH_FIELD = {"NotebookEdit": "notebook_path"}
 ASSIGNMENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
 SAFE_HEAD = re.compile(r"^[A-Za-z0-9._+-]*")
 MAX_COMMAND = 64
-UNSURE = ('"', "'", "`", "(")
 EVENTS = {
     "SubagentStart": ("start", None, None),
     "SubagentStop": ("stop", None, None),
@@ -81,12 +80,8 @@ def _target(tool, tool_input, root):
     if tool == "Bash":
         command = tool_input.get("command")
         words = command.split() if isinstance(command, str) else []
-        skipped = [word for word in words if ASSIGNMENT.match(word)]
-        if any(mark in word for word in skipped for mark in UNSURE):
-            return ""  # a quoted or substituted value: we cannot tell where it ends
-        words = [word for word in words if not ASSIGNMENT.match(word)]
-        if not words:
-            return ""
+        if not words or ASSIGNMENT.match(words[0]):
+            return ""  # never look past the first word: a value may hide a secret
         return SAFE_HEAD.match(os.path.basename(words[0])).group(0)[:MAX_COMMAND]
     return ""
 
