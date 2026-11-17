@@ -93,6 +93,10 @@ Rules for the AGENTS section:
 - A line that does not parse is counted and shown as "N lines not read", never guessed.
 - Rows older than the latest plan run are dropped: the viewer shows runs since the log's most recent `start` that follows a 30-minute gap (builder's call on the exact rule, section 9).
 
+### 6.3a Card layout (added at the owner's request)
+
+On a terminal 100 columns or wider, `--watch` draws cards instead of the table, following `docs/media/live-view-preview-cards.png`: a lead box, a "Dispatch builders" box, one card per agent (role and model, item, state and doing-now, time and calls), an end box, the five newest events as a log, and a WAITING ON YOU box. It uses only what the log holds: no cost, effort or percent-complete bars. Narrower terminals get the table.
+
 `team-status` without `--watch` prints the AGENTS section once, in the same place, so the snapshot and the live view agree.
 
 ### 6.4 Plugin changes

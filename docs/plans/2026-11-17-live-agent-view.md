@@ -4,11 +4,11 @@
 
 **Goal:** Hooks record what each team agent does into an event log, and `team-status --watch` shows every agent live.
 
-**Architecture:** A new `scripts/team-event` script, called by plugin hooks, appends one JSON line per agent event to `paths.events`. A new `team_status/events.py` folds the log into one row per agent; `report.py` prints them as an AGENTS section and `cli.py` adds `--watch`. A spike first checks what Claude Code's hooks really report.
+**Architecture:** A new `scripts/team-event` script, called by plugin hooks, appends one JSON line per agent event to `paths.events`. A new `team_status/events.py` folds the log into one row per agent; `report.py` prints them as an AGENTS section and `cli.py` adds `--watch`, which draws a card layout (Task 9) on wide terminals and the table otherwise. A spike first checks what Claude Code's hooks really report.
 
 **Tech Stack:** Python 3.9+ standard library, `unittest`, Claude Code plugin hooks (`hooks/hooks.json`).
 
-**Spec:** `docs/specs/2026-11-17-live-agent-view-design.md` (approved by the owner, including the section 11 fallback).
+**Spec:** `docs/specs/2026-11-17-live-agent-view-design.md` (approved by the owner, including the section 11 fallback; section 6.3a, the card layout, was added at the owner's request and is covered by Task 9 and the preview image `docs/media/live-view-preview-cards.png`).
 
 ## Global Constraints
 
@@ -17,6 +17,7 @@
 - The log holds tool names, project-relative file paths and the first word of a Bash command. Never file contents, command text beyond the first word, or tool output.
 - Default log path `.claude/team/events.jsonl`; always in the main checkout, never in a worktree.
 - Only agents whose type starts with `agent-team:` or equals a `specialists[].agent` are recorded.
+- Card layout shows only data the log holds: no cost, no effort, no percent-complete bars.
 - Silent = running with no event for 300 seconds and no open tool call.
 - Plugin version goes to `0.2.0` in `.claude-plugin/plugin.json` (and `marketplace.json` if it carries a version).
 - Hooks run `python3 -I`. Every test is seen failing before the code that passes it. Commit after each task.
@@ -179,3 +180,26 @@
 - [ ] **Step 4:** Run the whole suite; expect PASS.
 - [ ] **Step 5: Real run (owner's design section 8).** Install in a scratch git repo, run the two-item `subtract`/`multiply` plan with `team-status --watch` open, and confirm each agent appears, shows what it is doing, and ends `✓`. Paste the screen into the pull request.
 - [ ] **Step 6: Commit.**
+
+## Task 9: Card layout for `--watch`
+
+Build after Tasks 3 to 5. The target look is `docs/media/live-view-preview-cards.png`.
+
+**Files:**
+- Create: `scripts/team_status/cards.py`
+- Modify: `scripts/team_status/config.py` (`model_for`), `scripts/team_status/events.py` (`recent`), `scripts/team_status/cli.py` (choose layout in `--watch`)
+- Test: `tests/test_cards.py`, `tests/test_config.py`, `tests/test_events.py`, `tests/test_cli.py`
+
+**Interfaces:**
+- Consumes: `EventLog`, `Row`, `config.events_path`.
+- Produces:
+  - `config.model_for(cfg: dict, agent: str) -> Optional[str]`: the model name for a core role (`cfg["roles"][agent]` then `cfg["tiers"]["claude-code"]`) or a specialist (its `tier`); `None` for an unknown agent.
+  - `events.Event = namedtuple("Event", "ts event agent_id agent item tool target phase ok")`; `EventLog.recent(self, n: int) -> list[Event]` newest first, from the last 50 events kept in memory.
+  - `cards.render(rows: list[Row], recent: list[Event], cfg: dict, lead_line: str, waiting: list[str], width: int, color: bool) -> list[str]`: the full card screen. Layout: a lead box (`<Model> · lead`, then `lead_line`), a "Dispatch builders" box, rows of cards (at most 4 per row, equal widths from `width`), an end box `back to lead · verify · open PRs`, the 5 newest `recent` events as a log, and a `WAITING ON YOU` box. Each card has the title `<role> · <Model>`, the item, the state and what it is doing (the same glyphs as the table), and a footer `3m12s   12 calls`. Colour (ANSI) only when `color` is true: tier colours Fable violet, Opus orange, Sonnet blue; running blue, done green, failed red, silent amber.
+  - `--watch` uses `cards.render` when the terminal width is 100 columns or more (`shutil.get_terminal_size`), `report.render` otherwise; the width and a `color` flag (stdout is a terminal and `NO_COLOR` is unset) come from `cli.main`, injectable for tests.
+
+- [ ] **Step 1:** Failing tests in `test_cards.py` (rows built by hand, `color=False`, `width=120`): `test_card_title_has_role_and_model` (`builder · sonnet` per the fixture config tiers); `test_four_cards_per_row_then_wrap` (5 rows give 2 card rows); `test_card_shows_state_doing_and_footer`; `test_waiting_box_lists_items`; `test_log_shows_five_newest_first`; `test_narrow_width_never_cuts_a_line` (every output line fits `width`; use `width=100`); `test_unknown_agent_has_no_model_in_title`; `test_color_adds_ansi_only_when_asked`; `test_no_agents_prints_the_no_events_message`. Add `test_model_for_*` to `test_config.py` (core role, specialist, unknown) and `test_recent_returns_newest_first` to `test_events.py`. In `test_cli.py`: `test_watch_uses_cards_when_wide_and_table_when_narrow`.
+- [ ] **Step 2:** Run the four modules; expect FAIL.
+- [ ] **Step 3:** Implement `model_for`, `Event`/`recent`, `cards.render` and the layout switch. Draw boxes with `┌─┐│└┘`; measure text with `len` after stripping ANSI so colour never breaks alignment; truncate long targets with `…`.
+- [ ] **Step 4:** Run the whole suite; expect PASS. Compare a rendered frame with the preview image by eye and note differences in the pull request.
+- [ ] **Step 5: Commit.**
