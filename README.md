@@ -1,3 +1,5 @@
+**English** · [简体中文](README.zh-CN.md) · [မြန်မာ](README.my.md)
+
 # agent-team
 
 A Claude Code plugin: an AI agent team with a model per role, one workflow from plan to pull request, steps only the owner may take, and a `team-status` command for the terminal.
@@ -22,7 +24,17 @@ In Claude Code:
 1. `/team-init` writes `.claude/team.json`.
 2. Ask the lead to plan a task; approve the plan; ask it to run the plan.
 3. `/team-status`, or from a clone of this repository in any terminal: `python3 -I agent-team/scripts/team-status <project-dir>`.
-4. `python3 -I agent-team/scripts/team-status --watch <project-dir>` (run it in a second terminal) shows every agent live. [claude-flightdeck](https://github.com/scasella/claude-flightdeck) is an optional alternative: `/flightdeck` shows one session's agents.
+
+### Watch it live
+
+1. In Claude Code, run `/team-watch`. It prints one line with the real plugin folder and your project folder filled in.
+2. Open a second terminal and paste that line. It looks like this, and refreshes every second until Ctrl+C:
+
+```bash
+python3 -I <plugin folder>/scripts/team-status --watch <project folder>
+```
+
+From a clone of this repository, in any terminal: `python3 -I agent-team/scripts/team-status --watch <project-dir>`. On a terminal 100 columns wide or more it draws cards; on a narrower one it draws a table. `/team-status` (without watching) prints a single snapshot.
 
 ### What the live view shows and does not
 

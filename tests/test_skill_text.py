@@ -47,6 +47,23 @@ class SkillTextTest(unittest.TestCase):
         self.assertIn("`python3 -I agent-team/scripts/team-status --watch <project-dir>`", readme)
         self.assertNotIn("`team-status --watch`", readme)
 
+    def test_team_watch_command_prints_the_resolved_watch_command(self):
+        text = read("commands", "team-watch.md")
+        self.assertIn("--watch", text)
+        self.assertIn("${CLAUDE_PLUGIN_ROOT}", text)
+        self.assertIn("$PWD", text)
+        self.assertIn("second terminal", text)
+        self.assertIn("Do not run", text)
+        self.assertNotIn("`team-status --watch`", text)
+
+    def test_readme_has_a_watch_it_live_section_with_team_watch(self):
+        readme = read("README.md")
+        self.assertIn("### Watch it live", readme)
+        section = readme.split("### Watch it live", 1)[1].split("\n### ", 1)[0]
+        self.assertIn("`/team-watch`", section)
+        self.assertIn("second terminal", section)
+        self.assertIn("python3 -I", section)
+
     def test_first_design_doc_points_to_live_view(self):
         text = read("docs", "specs", "2026-11-17-agent-team-plugin-design.md")
         self.assertIn("live-agent-view-design.md", text)
