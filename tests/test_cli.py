@@ -212,10 +212,31 @@ class WatchTest(unittest.TestCase):
                  max_frames=2, color=False, now=NOW)
         join_gh_threads()
         frames = out.getvalue().split(CLEAR)
-        self.assertIn("+8 more agents (use a taller terminal)", frames[1])
+        self.assertIn("\nAGENTS   plan: plans/2026-11-17-calc.md\n", frames[1])  # 12 lines: no card row fits
+        self.assertFalse(set("┌│└") & set(frames[1]))
+        self.assertIn("┌", frames[2])
         self.assertNotIn("more agents", frames[2])
         self.assertIn("item7", frames[2])
         self.assertEqual(sizes, [])
+
+    def test_short_terminal_falls_back_to_table(self):
+        self.ignore_log()
+        write_events(self.root, PLAN_EVENTS[:1] + [dict(PLAN_EVENTS[1], agent_id="a%d" % n, item="item%d" % n)
+                                                   for n in range(5)])
+        _, out, _ = self.watch(["--watch", self.root], lambda s: None, max_frames=1, width=120, now=NOW, height=24)
+        frame = out.split(CLEAR)[1]
+        self.assertFalse(set("┌│└") & set(frame))
+        self.assertIn("\nAGENTS   plan: plans/2026-11-17-calc.md\n", frame)
+        self.assertTrue(frame.splitlines()[0].endswith(" · " + CLOCK))
+        self.assertTrue(frame.endswith("\n"))
+        _, out, _ = self.watch(["--watch", self.root], lambda s: None, max_frames=1, width=120, now=NOW, height=25)
+        frame = out.split(CLEAR)[1]
+        self.assertEqual(len(frame.splitlines()), 25)
+        self.assertIn("+1 more agents (use a taller terminal)", frame)
+        os.remove(os.path.join(self.root, ".claude/team/events.jsonl"))
+        _, out, _ = self.watch(["--watch", self.root], lambda s: None, max_frames=1, width=120, now=NOW, height=5)
+        self.assertIn("WAITING ON OWNER", out)
+        self.assertNotIn("┌", out)
 
 
     def test_card_frame_as_tall_as_the_screen_does_not_scroll(self):

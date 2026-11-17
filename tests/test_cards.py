@@ -191,13 +191,30 @@ class CardsTest(unittest.TestCase):
 
     def test_tall_screen_keeps_waiting_box(self):
         rows, recent = self.tall()
-        out = draw(rows, recent, ["merge #7"], height=10)
+        full = draw(rows, recent, ["merge #7"], plan="p.md", clock="14:02:11")
+        fixed = len(full) - 21 - 5  # three card rows and the log
+        out = draw(rows, recent, ["merge #7"], plan="p.md", clock="14:02:11", height=fixed + 8)
         joined = "\n".join(out)
-        self.assertIn("+12 more agents (use a taller terminal)", out)
-        self.assertNotIn("item00", joined)
+        self.assertEqual(len(out), fixed + 8)
+        self.assertIn("+8 more agents (use a taller terminal)", out)
+        self.assertIn("item03", joined)
+        self.assertNotIn("item04", joined)
         self.assertIn("back to lead · verify · open PRs", joined)
         self.assertIn("WAITING ON YOU   merge #7", out[-2])
         self.assertTrue(out[-1].startswith("└"))
+        self.assertIsNone(draw(rows, recent, ["merge #7"], height=10))
+
+    def test_short_screen_falls_back_to_table(self):
+        builders = [row(item="item%d" % n) for n in range(5)]
+        self.assertIsNone(draw(builders, [event()], ["merge #7"], plan="p.md", clock="14:02:11", height=24))
+        out = draw(builders, [event()], ["merge #7"], plan="p.md", clock="14:02:11", height=25)
+        self.assertEqual(len(out), 25)
+        self.assertEqual(len([line for line in out if line.count("┌") == 4]), 1)
+        self.assertIn("+1 more agents (use a taller terminal)", out)
+        self.assertIsNone(draw([row()], plan="p.md", clock="14:02:11", height=20))
+        self.assertIsNone(draw([], plan="p.md", clock="14:02:11", height=5))
+        self.assertIsNotNone(draw([], plan="p.md", clock="14:02:11", height=0))
+        self.assertIsNotNone(draw([], plan="p.md", clock="14:02:11", height=12))
 
     def test_unknown_height_drops_nothing(self):
         rows, recent = self.tall()

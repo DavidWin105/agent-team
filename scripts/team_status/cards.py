@@ -29,11 +29,13 @@ def _char_width(char):
 
 
 def render(rows, recent, cfg, lead_line, waiting, width, color, notes=(), warning=None, height=None, plan=None, clock=None):
-    """Answer the card screen as a list of lines, none wider than width.
+    """Answer the card screen as a list of lines, none wider than width, or None when it cannot fit height.
 
     plan and clock make the AGENT TEAM header line; warning comes next. notes say the log is empty or
     incomplete (report.log_notes). With a height, a screen too tall first loses the log, then the card
-    rows that do not fit; the end box and the WAITING ON YOU box always stay."""
+    rows that do not fit; the end box and the WAITING ON YOU box always stay. When not even one card row
+    fits, or the parts always kept are taller than height, the answer is None: the caller draws the table.
+    Returns Optional[list]."""
     paint = _painter(color)
     top = _header(plan, clock, width, paint) if plan or clock else []
     top += [_clip(paint(warning, "1;" + AMBER), width)] if warning else []
@@ -55,11 +57,15 @@ def render(rows, recent, cfg, lead_line, waiting, width, color, notes=(), warnin
     if height and len(top) + len(shown) + len(end) + len(middle) + len(log) + len(bottom) > height:
         log = []
         room = height - len(top) - len(end) - len(middle) - len(bottom)
+        if room < 0:
+            return None
         if len(shown) > room:
             room -= 1  # the "+K more agents" line
             fit = 0
             while fit < len(groups) and sum(len(group) for group in groups[:fit + 1]) <= room:
                 fit += 1
+            if fit == 0:
+                return None
             shown = [line for group in groups[:fit] for line in group]
             hidden = len(rows) - min(fit * MAX_PER_ROW, len(rows))
             shown.append(_clip(paint("+%d more agents (use a taller terminal)" % hidden, AMBER), width))

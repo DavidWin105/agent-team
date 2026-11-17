@@ -117,7 +117,7 @@ def _gather(project, env, head, events, reread=False):
 def _frame(project, cfg, log, slow, events, now, width=0, color=False, height=None, clock=None):
     """Refresh the event log and render one frame of text: (head, worktrees, open pull requests, log ignored).
 
-    clock is given only in --watch frames. A card frame has no newline after its last line, so a frame
+    clock is given only in --watch frames. A terminal too short for one card row gets the table. A card frame has no newline after its last line, so a frame
     exactly height lines tall does not scroll."""
     paths = cfg["paths"]
     log_path = os.path.join(project, paths["routing-log"])
@@ -132,7 +132,8 @@ def _frame(project, cfg, log, slow, events, now, width=0, color=False, height=No
         waiting = report.waiting_items(plan_list, prs)
         lines = cards.render(rows, log.recent(5), cfg, _lead_line(rows), waiting, width, color, notes, warning,
                              height=height, plan=log.plan, clock=clock)
-        return "\n".join(lines)
+        if lines is not None:  # None: not even one card row fits the height, so the table is drawn
+            return "\n".join(lines)
     return report.render(
         os.path.basename(project),
         head,
