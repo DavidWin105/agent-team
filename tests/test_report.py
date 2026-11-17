@@ -1,6 +1,10 @@
 """Tests for the printed report."""
+import shutil
 import unittest
+from datetime import datetime, timezone
 
+from fixtures import make_project, write_events
+from team_status.events import EventLog
 from team_status.plans import Plan
 from team_status.repo import Head, PullRequest
 from team_status.report import render
@@ -18,6 +22,91 @@ ONE_PR = [PullRequest(7, "feat: made-up item")]
 
 def full(prs=ONE_PR, summary=SUMMARY):
     return render("demo", HEAD, PLANS, ["feat/item-a"], prs, summary, "plans/log.md")
+
+
+NOW = datetime(2026, 11, 17, 10, 10, 0, tzinfo=timezone.utc)
+EVENTS_PATH = ".claude/team/events.jsonl"
+
+
+def ev(ts, event, agent="builder", item="subtract", agent_id="a1", **extra):
+    return dict(ts="2026-11-17T" + ts + "Z", event=event, agent=agent, item=item, agent_id=agent_id, **extra)
+
+
+class AgentsSectionTest(unittest.TestCase):
+    def log(self, lines):
+        root = make_project(commit=False)
+        self.addCleanup(shutil.rmtree, root)
+        log = EventLog(write_events(root, lines))
+        log.refresh()
+        return log
+
+    def agents(self, lines):
+        return render("demo", HEAD, PLANS, [], [], SUMMARY, "plans/log.md", agents=self.log(lines), now=NOW)
+
+    def running(self):
+        return [
+            ev("10:00:00", "plan", target="p", agent_id=""),
+            ev("10:06:48", "start"),
+            ev("10:06:50", "tool", tool="Edit", target="test_calc.py", phase="pre"),
+        ]
+
+    def test_agents_section_rows(self):
+        lines = [ev("10:00:00", "plan", target="p", agent_id=""), ev("10:06:48", "start")]
+        for n in range(11):
+            lines.append(ev("10:07:%02d" % n, "tool", tool="Read", target="a.py", phase="pre"))
+        lines.append(ev("10:09:50", "tool", tool="Edit", target="test_calc.py", phase="pre"))
+        text = self.agents(lines)
+        self.assertIn("AGENTS\n", text)
+        self.assertIn("  subtract  builder        \u25b6 Edit test_calc.py  3m12s  12 calls\n", text)
+
+    def test_done_failed_silent(self):
+        base = [ev("10:00:00", "plan", target="p", agent_id="")]
+        done = self.agents(base + [ev("10:08:00", "start"), ev("10:09:00", "stop", ok=True)])
+        self.assertIn("\u2713 done", done)
+        failed = self.agents(base + [ev("10:08:00", "start"), ev("10:09:00", "stop", ok=False)])
+        self.assertIn("\u2717 failed", failed)
+        silent = self.agents(base + [ev("10:01:00", "start")])
+        self.assertIn("? silent", silent)
+
+    def test_running_without_doing(self):
+        text = self.agents([ev("10:00:00", "plan", target="p", agent_id=""), ev("10:09:50", "start")])
+        self.assertIn("\u25b6 running", text)
+
+    def test_no_events_message(self):
+        message = "  no agent events recorded yet (.claude/team/events.jsonl)\n"
+        self.assertIn("AGENTS\n" + message, full())
+        self.assertIn("AGENTS\n" + message, self.agents([]))
+
+    def test_shared_row_note(self):
+        lines = [
+            ev("10:00:00", "plan", target="p", agent_id=""),
+            ev("10:08:00", "start", agent_id=""),
+            ev("10:08:01", "start", agent_id=""),
+        ]
+        self.assertIn("  2 agents share this row\n", self.agents(lines))
+
+    def test_unread_line_note(self):
+        lines = [ev("10:00:00", "plan", target="p", agent_id=""), ev("10:08:00", "start"), "junk", "{"]
+        self.assertIn("  2 lines not read\n", self.agents(lines))
+
+    def test_no_plan_marker_note(self):
+        text = self.agents([ev("10:08:00", "start")])
+        self.assertIn("  no plan marker: showing every event\n", text)
+        self.assertNotIn("no plan marker", self.agents(self.running()))
+
+    def test_escape_and_newline_in_target_never_reach_the_table(self):
+        bad = "x\x1b]0;PWNED\x07\x1b[2J\n  multiply  builder  \u2713 done.py"
+        text = self.agents([ev("10:00:00", "plan", target="p", agent_id=""), ev("10:09:50", "start"),
+                            ev("10:09:51", "tool", tool="Edit", target=bad, phase="pre")])
+        self.assertNotIn("\x1b", text)
+        self.assertNotIn("\x07", text)
+        self.assertNotIn("\n  multiply  builder", text)
+        self.assertIn("\u25b6 Edit x?]0;PWNED??[2J?  multiply  builder  \u2713 done.py  0m10s  1 calls\n", text)
+
+    def test_agents_between_header_and_plans(self):
+        text = self.agents(self.running())
+        self.assertLess(text.index("agent-team \u00b7"), text.index("AGENTS"))
+        self.assertLess(text.index("AGENTS"), text.index("PLANS"))
 
 
 class RenderTest(unittest.TestCase):

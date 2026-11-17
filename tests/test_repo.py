@@ -41,6 +41,25 @@ class GitTest(unittest.TestCase):
         self.assertEqual(repo.worktrees(self.root), ["feat/item-a"])
 
 
+class IsIgnoredTest(unittest.TestCase):
+    def setUp(self):
+        self.root = make_project()
+        self.addCleanup(shutil.rmtree, self.root)
+
+    def test_ignored_file_is_true(self):
+        with open(os.path.join(self.root, ".gitignore"), "w", encoding="utf-8") as handle:
+            handle.write(".claude/team/events.jsonl\n")
+        self.assertTrue(repo.is_ignored(self.root, ".claude/team/events.jsonl"))
+
+    def test_file_not_ignored_is_false(self):
+        self.assertFalse(repo.is_ignored(self.root, ".claude/team/events.jsonl"))
+
+    def test_outside_a_repo_is_false(self):
+        plain = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, plain)
+        self.assertFalse(repo.is_ignored(plain, "x.jsonl"))
+
+
 class GhTest(unittest.TestCase):
     def setUp(self):
         self.root = make_project()

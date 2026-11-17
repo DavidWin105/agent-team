@@ -1,17 +1,75 @@
 """Turn the gathered state into the printed report (spec section 9)."""
+from datetime import datetime, timezone
+
+from team_status.config import DEFAULT_EVENTS
 from team_status.plans import first_word
 
 PLAN_NAME_WIDTH = 36
+AGENT_NAME_WIDTH = 14
+GLYPHS = {"running": "\u25b6", "done": "\u2713", "failed": "\u2717", "silent": "?"}
 
 
-def render(project, head, plan_list, branches, prs, summary, routing_path):
-    lines = ["agent-team · %s · %s %s" % (project, head.branch, head.commit), ""]
+def render(project, head, plan_list, branches, prs, summary, routing_path, agents=None, now=None, events_path=DEFAULT_EVENTS,
+           warning=None):
+    now = now or datetime.now(timezone.utc)
+    lines = ["agent-team · %s · %s %s" % (project, head.branch, head.commit)] + ([warning] if warning else []) + [""]
+    lines += format_agents(agents, now, events_path) + [""]
     lines += _plans(plan_list) + [""]
     lines += ["WORKTREES   %d   %s" % (len(branches), ", ".join(branches)), ""]
     lines += _prs(prs) + [""]
     lines += _waiting(plan_list, prs) + [""]
     lines += _routing(summary, routing_path)
     return "\n".join(lines) + "\n"
+
+
+def format_agents(log, now, events_path):
+    """Answer the AGENTS section lines; say so when there is nothing to show."""
+    rows = [] if _empty(log) else log.rows(now)
+    lines = ["AGENTS"]
+    if rows:
+        item_width = max(len(row.item or "-") for row in rows)
+        status = [_status(row) for row in rows]
+        status_width = max(len(text) for text in status)
+        for row, text in zip(rows, status):
+            lines.append(
+                "  %-*s  %-*s %-*s  %s  %d calls"
+                % (item_width, row.item or "-", AGENT_NAME_WIDTH, row.agent or "-", status_width, text, _clock(row.seconds), row.calls)
+            )
+            if row.shared > 1:
+                lines.append("  " + shared_note(row))
+    return lines + ["  " + note for note in log_notes(log, rows, events_path)]
+
+
+def log_notes(log, rows, events_path):
+    """Answer the notes that say the log is empty or incomplete; the table and the cards both print them."""
+    if _empty(log):
+        return ["no agent events recorded yet (%s)" % events_path]
+    notes = []
+    if not rows and log.seen:
+        notes.append("no agent activity since the last plan marker")
+    if log.unread:
+        notes.append("%d line%s not read" % (log.unread, "" if log.unread == 1 else "s"))
+    if log.plan is None and log.seen:
+        notes.append("no plan marker: showing every event")
+    return notes
+
+
+def shared_note(row):
+    """Answer the note for a row that several agents without an id share."""
+    return "%d agents share this row" % row.shared
+
+
+def _empty(log):
+    return log is None or (log.seen == 0 and log.unread == 0)
+
+
+def _status(row):
+    text = row.doing if row.state == "running" and row.doing else row.state
+    return "%s %s" % (GLYPHS[row.state], text)
+
+
+def _clock(seconds):
+    return "%dm%02ds" % divmod(seconds, 60)
 
 
 def _plans(plan_list):
@@ -34,6 +92,11 @@ def _prs(prs):
 
 
 def _waiting(plan_list, prs):
+    return ["WAITING ON OWNER"] + ["  " + item for item in (waiting_items(plan_list, prs) or ["nothing"])]
+
+
+def waiting_items(plan_list, prs):
+    """Answer the plain list of things waiting on the owner."""
     items = ["merge #%d" % pr.number for pr in (prs or [])]
     items += [
         "plan %s: %d unanswered question%s" % (plan.name, plan.unanswered, "" if plan.unanswered == 1 else "s")
@@ -43,7 +106,7 @@ def _waiting(plan_list, prs):
     items += ["plan %s: still Draft" % plan.name for plan in plan_list if first_word(plan.status) == "Draft"]
     if prs is None:
         items.append("pull requests: not checked")
-    return ["WAITING ON OWNER"] + ["  " + item for item in (items or ["nothing"])]
+    return items
 
 
 def _routing(summary, routing_path):

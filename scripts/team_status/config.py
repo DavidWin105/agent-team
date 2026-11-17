@@ -1,6 +1,7 @@
 """Load and check a project's .claude/team.json (spec section 5)."""
 import json
 import os
+import re
 
 CONFIG_PATH = os.path.join(".claude", "team.json")
 TOOL = "claude-code"
@@ -8,6 +9,7 @@ CORE_ROLES = ("lead", "builder", "code-reviewer", "security-reviewer", "plan-rev
 REQUIRED_KEYS = ("version", "owner", "tiers", "roles", "checks", "owner-only", "paths")
 OPTIONAL_KEYS = ("specialists", "rules")
 PATH_KEYS = ("plans", "plan-glob", "routing-log")
+DEFAULT_EVENTS = ".claude/team/events.jsonl"
 RULE_DEFAULTS = {"reviewer-differs-from-writer": True, "rerun-up-after-failures": 2, "one-lead-per-plan": True}
 BOOLEAN_RULES = ("reviewer-differs-from-writer", "one-lead-per-plan")
 
@@ -108,7 +110,24 @@ def _check_owner_only(steps):
 def _check_paths(paths):
     if not isinstance(paths, dict):
         return ["paths must be an object"]
-    return ["paths.%s must be a non-empty string" % key for key in PATH_KEYS if not _is_text(paths.get(key))]
+    problems = ["paths.%s must be a non-empty string" % key for key in PATH_KEYS if not _is_text(paths.get(key))]
+    if "events" in paths and not _is_text(paths["events"]):
+        problems.append("paths.events must be a non-empty string")
+    elif "events" in paths and not _inside_project(paths["events"]):
+        problems.append("paths.events must be a relative path inside the project")
+    return problems
+
+
+def _inside_project(path):
+    """Answer whether a relative path stays inside the project: not absolute, no ".." part."""
+    if os.path.isabs(path) or path.startswith(("/", "\\")) or re.match(r"^[A-Za-z]:", path):
+        return False
+    return ".." not in re.split(r"[\\/]", path)
+
+
+def events_path(cfg):
+    """Answer the events log path, relative to the project."""
+    return cfg["paths"].get("events", DEFAULT_EVENTS)
 
 
 def _check_rules(rules):
@@ -124,3 +143,16 @@ def _check_rules(rules):
     if isinstance(rerun, bool) or not isinstance(rerun, int) or rerun < 1:
         problems.append("rules.rerun-up-after-failures must be a whole number of 1 or more")
     return problems
+
+
+def model_for(cfg, agent):
+    """Answer the model name for a core role or a specialist agent, else None."""
+    try:
+        models = cfg["tiers"][TOOL]
+        tier = cfg["roles"].get(agent)
+        if tier is None:
+            tier = next((item["tier"] for item in cfg.get("specialists", []) if item["agent"] == agent), None)
+        model = models.get(tier) if tier is not None else None
+    except (KeyError, TypeError, AttributeError, StopIteration):
+        return None
+    return model if isinstance(model, str) else None

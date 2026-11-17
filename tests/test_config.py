@@ -113,6 +113,33 @@ class ValidateTest(unittest.TestCase):
             ["paths.plan-glob must be a non-empty string", "paths.routing-log must be a non-empty string"],
         )
 
+    def test_events_path_defaults_when_missing(self):
+        data = valid_config()
+        self.assertEqual(config.validate(data), [])
+        self.assertEqual(config.events_path(data), config.DEFAULT_EVENTS)
+        self.assertEqual(config.DEFAULT_EVENTS, ".claude/team/events.jsonl")
+
+    def test_events_path_used_when_set(self):
+        data = valid_config()
+        data["paths"] = {**data["paths"], "events": "logs/e.jsonl"}
+        self.assertEqual(config.validate(data), [])
+        self.assertEqual(config.events_path(data), "logs/e.jsonl")
+
+    def test_events_must_be_non_empty_string(self):
+        for bad in ("", 3):
+            data = valid_config()
+            data["paths"] = {**data["paths"], "events": bad}
+            self.assertEqual(config.validate(data), ["paths.events must be a non-empty string"])
+
+    def test_events_must_stay_inside_the_project(self):
+        for bad in ("/tmp/e.jsonl", "../outside/x.jsonl", "logs/../../x.jsonl", "a/..", "..\\x.jsonl", "\\x.jsonl"):
+            data = valid_config()
+            data["paths"] = {**data["paths"], "events": bad}
+            self.assertEqual(config.validate(data), ["paths.events must be a relative path inside the project"], bad)
+        data = valid_config()
+        data["paths"] = {**data["paths"], "events": "logs/..e/x.jsonl"}
+        self.assertEqual(config.validate(data), [])
+
     def test_rules_and_specialists_are_optional(self):
         data = valid_config()
         del data["rules"]
@@ -133,3 +160,17 @@ class ValidateTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ModelForTest(unittest.TestCase):
+    def test_model_for_core_role(self):
+        self.assertEqual(config.model_for(valid_config(), "builder"), "sonnet")
+        self.assertEqual(config.model_for(valid_config(), "security-reviewer"), "fable")
+
+    def test_model_for_specialist(self):
+        self.assertEqual(config.model_for(valid_config(), "devops-sre"), "opus")
+
+    def test_model_for_unknown_or_malformed(self):
+        self.assertIsNone(config.model_for(valid_config(), "stranger"))
+        self.assertIsNone(config.model_for({}, "builder"))
+        self.assertIsNone(config.model_for(None, "builder"))

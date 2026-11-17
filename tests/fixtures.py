@@ -121,3 +121,13 @@ def fake_gh(script):
 def env_with(bindir):
     """Answer an environment whose PATH finds the given folder first."""
     return {**os.environ, "PATH": bindir + os.pathsep + os.environ.get("PATH", "")}
+
+
+def write_events(root, lines):
+    """Write the given lines (dicts become JSON, str as is) to the events log and answer its path."""
+    path = os.path.join(root, ".claude/team/events.jsonl")
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as handle:
+        for line in lines:
+            handle.write((line if isinstance(line, str) else json.dumps(line)) + "\n")
+    return path
