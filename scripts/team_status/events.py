@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 Event = namedtuple("Event", "ts event agent_id agent item tool target phase ok")
 Row = namedtuple("Row", "agent item state doing calls seconds shared")
 SILENT_SECONDS = 300
+OPEN_CALL_LIMIT = 1800
 HEAD_BYTES = 64
 RECENT_KEPT = 50
 TIME_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
@@ -61,10 +62,13 @@ class EventLog:
             self.unread += 1
             return
         self.seen += 1
+        if parsed[0].event == "plan":
+            # A new run: everything before the marker is dropped from memory.
+            self.plan = parsed[0].target
+            self._events = []
+            self._recent.clear()
         self._events.append(parsed)
         self._recent.append(parsed[0])
-        if parsed[0].event == "plan":
-            self.plan = parsed[0].target
 
     def rows(self, now):
         """Answer one Row per agent for the events after the last plan marker."""
@@ -130,36 +134,41 @@ def _fold(group, now):
         # The last event decides: a start or tool event after the last stop means it runs again.
         last_stop = max((i for i, event in enumerate(events) if event.event == "stop"), default=-1)
         finished = bool(stops) and last_stop == len(events) - 1
-        current = events[last_stop + 1:]
+        current = group[last_stop + 1:]
     else:
         finished = bool(stops) and len(stops) >= max(starts, 1)
-        current = events
+        current = group
     calls = sum(1 for event in events if event.event == "tool" and event.phase == "pre")
     if finished:
         state = "failed" if any(event.ok is False for event in stops) else "done"
         end, doing = last[1], ""
     else:
-        tools = [event for event in current if event.event == "tool"]
-        open_call = _open_call(tools)
+        tools = [event for event, _ in current if event.event == "tool"]
+        open_call = _open_call(current, now)
         quiet = (now - last[1]).total_seconds() >= SILENT_SECONDS
         state = "silent" if quiet and open_call is None else "running"
-        end, doing = now, _doing(open_call, tools)
+        end, doing = (last[1] if state == "silent" else now), _doing(open_call, tools)
     item = next((event.item for event in events if event.item), "")
     shared = 1 if first[0].agent_id else max(starts, 1)
     return Row(first[0].agent, item, state, doing, calls, max(0, int((end - first[1]).total_seconds())), shared)
 
 
-def _open_call(tools):
-    """Answer the most recent pre event no post has closed; posts close the oldest open call of their tool."""
+def _open_call(group, now):
+    """Answer the most recent pre event no post has closed and not older than OPEN_CALL_LIMIT, else None.
+
+    Posts close the oldest open call of their tool. A call open longer than the limit is taken as lost."""
     open_calls = []
-    for event in tools:
+    for event, when in group:
+        if event.event != "tool":
+            continue
         if event.phase == "pre":
-            open_calls.append(event)
+            open_calls.append((event, when))
         elif event.phase == "post":
-            match = next((i for i, call in enumerate(open_calls) if call.tool == event.tool), None)
+            match = next((i for i, (call, _) in enumerate(open_calls) if call.tool == event.tool), None)
             if match is not None:
                 del open_calls[match]
-    return open_calls[-1] if open_calls else None
+    fresh = [call for call, when in open_calls if (now - when).total_seconds() <= OPEN_CALL_LIMIT]
+    return fresh[-1] if fresh else None
 
 
 def _doing(open_call, tools):

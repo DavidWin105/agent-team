@@ -77,6 +77,30 @@ class AgentsSectionTest(unittest.TestCase):
         self.assertIn("AGENTS\n" + message, full())
         self.assertIn("AGENTS\n" + message, self.agents([]))
 
+    def test_one_call_is_singular(self):
+        text = self.agents([ev("10:00:00", "plan", target="p", agent_id=""), ev("10:06:48", "start"),
+                            ev("10:06:50", "tool", tool="Edit", target="a.py", phase="pre")])
+        self.assertIn("  1 call\n", text)
+        self.assertNotIn("1 calls", text)
+
+    def test_one_line_not_read_is_singular(self):
+        text = self.agents([ev("10:00:00", "plan", target="p", agent_id=""), "{not json"])
+        self.assertIn("  1 line not read\n", text)
+
+    def test_pr_title_control_characters_are_replaced(self):
+        text = render("demo", HEAD, PLANS, [], [PullRequest(9, "fix\x1b[2J\nboom")], SUMMARY, "plans/log.md")
+        self.assertIn("  #9 fix?[2J?boom\n", text)
+        self.assertNotIn("\x1b", text)
+
+    def test_plan_name_control_characters_are_replaced(self):
+        plans = [Plan("a\x1b[2Jb", "Dra\x07ft", "le\nad", 1, None), Plan("p\x1bq", None, None, 0, "bro\x1bken")]
+        text = render("demo", HEAD, plans, [], [], SUMMARY, "plans/log.md")
+        self.assertNotIn("\x1b", text)
+        self.assertNotIn("\x07", text)
+        self.assertIn("a?[2Jb", text)
+        self.assertIn("plan a?[2Jb: 1 unanswered question", text)
+        self.assertIn("lead: le?ad", text)
+
     def test_shared_row_note(self):
         lines = [
             ev("10:00:00", "plan", target="p", agent_id=""),
@@ -101,7 +125,7 @@ class AgentsSectionTest(unittest.TestCase):
         self.assertNotIn("\x1b", text)
         self.assertNotIn("\x07", text)
         self.assertNotIn("\n  multiply  builder", text)
-        self.assertIn("\u25b6 Edit x?]0;PWNED??[2J?  multiply  builder  \u2713 done.py  0m10s  1 calls\n", text)
+        self.assertIn("\u25b6 Edit x?]0;PWNED??[2J?  multiply  builder  \u2713 done.py  0m10s  1 call\n", text)
 
     def test_agents_between_header_and_plans(self):
         text = self.agents(self.running())

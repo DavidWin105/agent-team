@@ -244,9 +244,26 @@ class HookTest(unittest.TestCase):
         self.assertEqual(self.lines(), [])
 
     def test_huge_input_exit_0(self):
-        big = json.dumps(self.payload(filler="x" * (1024 * 1024 + 10)))
+        big = json.dumps(self.payload(filler="x" * (8 * 1024 * 1024 + 10)))
         self.assertEqual(self.run_main(big), 0)
         self.assertEqual(self.lines(), [])
+
+    def test_payload_between_one_and_eight_mb_is_recorded(self):
+        big = json.dumps(self.payload(filler="x" * (2 * 1024 * 1024)))
+        self.assertEqual(self.run_main(big), 0)
+        self.assertEqual(len(self.lines()), 1)
+
+    def test_unicode_and_space_path_roundtrip(self):
+        from team_status.events import EventLog
+        for name in ("src/space dir/my file.py", "src/日本語 notes/café.py"):
+            hook.handle(self.payload(hook_event_name="PreToolUse", tool_name="Edit",
+                                     tool_input={"file_path": os.path.join(self.root, *name.split("/"))}))
+        with open(self.log, "rb") as handle:
+            self.assertEqual(handle.read().count(b"\n"), 2)
+        log = EventLog(self.log)
+        log.refresh()
+        self.assertEqual([e.target for e in log.recent(2)][::-1], [os.path.join(*n.split("/")) for n in
+                         ("src/space dir/my file.py", "src/日本語 notes/café.py")])
 
     def test_unwritable_log_exit_0(self):
         os.makedirs(self.log)  # a folder where the log file should be
