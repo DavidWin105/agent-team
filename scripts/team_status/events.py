@@ -1,5 +1,6 @@
 """Fold the live event log into one row per agent. Lines that do not read are counted, never guessed."""
 import json
+import unicodedata
 from collections import deque, namedtuple
 from datetime import datetime, timezone
 
@@ -101,7 +102,18 @@ def _parse(raw):
 
 
 def _text(value):
-    return value if isinstance(value, str) else ""
+    return printable(value) if isinstance(value, str) else ""
+
+
+def printable(text):
+    """Answer text with every control, format, unassigned or line-breaking character replaced by "?".
+
+    Log text reaches the owner's terminal, so no escape sequence or line break may pass."""
+    return "".join("?" if _unsafe(char) else char for char in text)
+
+
+def _unsafe(char):
+    return char in "\u2028\u2029" or unicodedata.category(char).startswith("C")
 
 
 def _key(event):
@@ -111,18 +123,48 @@ def _key(event):
 def _fold(group, now):
     """Answer the Row for one agent's events, oldest first."""
     first, last = group[0], group[-1]
-    starts = sum(1 for event, _ in group if event.event == "start")
-    stops = [event for event, _ in group if event.event == "stop"]
-    tools = [event for event, _ in group if event.event == "tool"]
-    calls = sum(1 for event in tools if event.phase == "pre")
-    open_call = tools[-1] if tools and tools[-1].phase == "pre" else None
-    if stops and len(stops) >= max(starts, 1):
-        state = "failed" if any(event.ok is False for event in stops) else "done"
-        end, open_call = last[1], None
+    events = [event for event, _ in group]
+    starts = sum(1 for event in events if event.event == "start")
+    stops = [event for event in events if event.event == "stop"]
+    if first[0].agent_id:
+        # The last event decides: a start or tool event after the last stop means it runs again.
+        last_stop = max((i for i, event in enumerate(events) if event.event == "stop"), default=-1)
+        finished = bool(stops) and last_stop == len(events) - 1
+        current = events[last_stop + 1:]
     else:
+        finished = bool(stops) and len(stops) >= max(starts, 1)
+        current = events
+    calls = sum(1 for event in events if event.event == "tool" and event.phase == "pre")
+    if finished:
+        state = "failed" if any(event.ok is False for event in stops) else "done"
+        end, doing = last[1], ""
+    else:
+        tools = [event for event in current if event.event == "tool"]
+        open_call = _open_call(tools)
         quiet = (now - last[1]).total_seconds() >= SILENT_SECONDS
         state = "silent" if quiet and open_call is None else "running"
-        end = now
-    doing = ("%s %s" % (open_call.tool, open_call.target)).strip() if open_call else ""
+        end, doing = now, _doing(open_call, tools)
+    item = next((event.item for event in events if event.item), "")
     shared = 1 if first[0].agent_id else max(starts, 1)
-    return Row(first[0].agent, first[0].item, state, doing, calls, max(0, int((end - first[1]).total_seconds())), shared)
+    return Row(first[0].agent, item, state, doing, calls, max(0, int((end - first[1]).total_seconds())), shared)
+
+
+def _open_call(tools):
+    """Answer the most recent pre event no post has closed; posts close the oldest open call of their tool."""
+    open_calls = []
+    for event in tools:
+        if event.phase == "pre":
+            open_calls.append(event)
+        elif event.phase == "post":
+            match = next((i for i, call in enumerate(open_calls) if call.tool == event.tool), None)
+            if match is not None:
+                del open_calls[match]
+    return open_calls[-1] if open_calls else None
+
+
+def _doing(open_call, tools):
+    if open_call is not None:
+        return ("%s %s" % (open_call.tool, open_call.target)).strip()
+    if tools and tools[-1].phase == "post" and tools[-1].ok is False:
+        return ("%s (failed)" % tools[-1].tool).strip()
+    return ""

@@ -123,6 +123,65 @@ class EventsTest(unittest.TestCase):
         row = self.rows([ev("2026-11-17T15:00:00Z", "start")])[0]
         self.assertEqual(row.seconds, 0)
 
+    def test_control_characters_in_text_become_question_marks(self):
+        bad = "x\x1b]0;PWNED\x07\x1b[2J\n  multiply  \x9b‎.py"
+        row = self.rows([START, ev("2026-11-17T14:02:20Z", "tool", tool="Ed\x1bit", target=bad, phase="pre",
+                                   agent="build\ner", item="sub\rtract")])[0]
+        self.assertEqual(row.doing, "Ed?it x?]0;PWNED??[2J?  multiply????.py")
+        self.assertEqual(self.log.recent(1)[0].agent, "build?er")
+        self.assertEqual(self.log.recent(1)[0].item, "sub?tract")
+        self.assertEqual(self.log.recent(1)[0].target, "x?]0;PWNED??[2J?  multiply????.py")
+
+    def test_item_is_first_non_empty_item(self):
+        rows = self.rows([ev("2026-11-17T14:02:11Z", "start", item=""), PRE])
+        self.assertEqual(rows[0].item, "subtract")
+
+    def test_resumed_agent_is_running_after_a_stop(self):
+        stop = ev("2026-11-17T14:03:00Z", "stop")
+        again = ev("2026-11-17T14:04:00Z", "tool", tool="Read", target="a.py", phase="pre")
+        row = self.rows([START, stop, again])[0]
+        self.assertEqual((row.state, row.doing, row.seconds), ("running", "Read a.py", 192))
+        restart = ev("2026-11-17T14:04:00Z", "start")
+        self.assertEqual(self.rows([START, stop, restart])[0].state, "running")
+        self.assertEqual(self.rows([START, stop, again, ev("2026-11-17T14:05:00Z", "stop")])[0].state, "done")
+
+    def test_rows_without_id_keep_the_count_rule(self):
+        a = ev("2026-11-17T14:02:11Z", "start", agent_id="")
+        b = ev("2026-11-17T14:02:12Z", "start", agent_id="")
+        stop = ev("2026-11-17T14:03:00Z", "stop", agent_id="")
+        late = ev("2026-11-17T14:04:00Z", "tool", agent_id="", tool="Read", phase="pre")
+        self.assertEqual(self.rows([a, b, stop, late])[0].state, "running")
+        self.assertEqual(self.rows([a, stop, late])[0].state, "done")
+
+    def test_parallel_calls_keep_the_unmatched_one_open(self):
+        pre_read = ev("2026-11-17T13:55:00Z", "tool", tool="Read", target="a.py", phase="pre")
+        pre_bash = ev("2026-11-17T13:55:01Z", "tool", tool="Bash", target="make", phase="pre")
+        post_read = ev("2026-11-17T13:55:02Z", "tool", tool="Read", target="a.py", phase="post", ok=True)
+        row = self.rows([ev("2026-11-17T13:54:00Z", "start"), pre_read, pre_bash, post_read])[0]
+        self.assertEqual((row.state, row.doing, row.calls), ("running", "Bash make", 2))
+
+    def test_unmatched_post_does_not_go_below_zero(self):
+        post = ev("2026-11-17T13:55:02Z", "tool", tool="Read", target="a.py", phase="post", ok=True)
+        pre = ev("2026-11-17T13:55:03Z", "tool", tool="Read", target="b.py", phase="pre")
+        row = self.rows([ev("2026-11-17T13:54:00Z", "start"), post, pre])[0]
+        self.assertEqual((row.state, row.doing), ("running", "Read b.py"))
+
+    def test_same_tool_twice_most_recent_unmatched_is_doing(self):
+        first = ev("2026-11-17T14:02:20Z", "tool", tool="Read", target="a.py", phase="pre")
+        second = ev("2026-11-17T14:02:21Z", "tool", tool="Read", target="b.py", phase="pre")
+        done = ev("2026-11-17T14:02:22Z", "tool", tool="Read", target="a.py", phase="post", ok=True)
+        self.assertEqual(self.rows([START, first, second, done])[0].doing, "Read b.py")
+
+    def test_failed_tool_shows_in_doing(self):
+        pre = ev("2026-11-17T14:02:20Z", "tool", tool="Bash", target="npm", phase="pre")
+        fail = ev("2026-11-17T14:02:30Z", "tool", tool="Bash", target="npm", phase="post", ok=False)
+        row = self.rows([START, pre, fail])[0]
+        self.assertEqual((row.state, row.doing), ("running", "Bash (failed)"))
+        good = ev("2026-11-17T14:02:30Z", "tool", tool="Bash", target="npm", phase="post", ok=True)
+        self.assertEqual(self.rows([START, pre, good])[0].doing, "")
+        again = ev("2026-11-17T14:02:40Z", "tool", tool="Edit", target="a.py", phase="pre")
+        self.assertEqual(self.rows([START, pre, fail, again])[0].doing, "Edit a.py")
+
 
 if __name__ == "__main__":
     unittest.main()

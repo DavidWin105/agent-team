@@ -1,9 +1,11 @@
 import re
+import shutil
 import unittest
+from datetime import datetime, timezone
 
-from fixtures import valid_config
+from fixtures import make_project, valid_config, write_events
 from team_status import cards
-from team_status.events import Event, Row
+from team_status.events import Event, EventLog, Row
 
 ANSI = re.compile(r"\x1b\[[0-9;]*m")
 LEAD = "1 running · 1 done"
@@ -98,4 +100,27 @@ class CardsTest(unittest.TestCase):
         out = draw([row(item="i%d" % n) for n in range(4)], width=120)
         card = [line for line in out if line.count("│") == 8]
         self.assertTrue(card)
+        self.assertEqual(len({len(line) for line in card}), 1)
+
+
+class CardsFromLogTest(unittest.TestCase):
+    def test_escape_and_newline_in_target_never_reach_the_cards(self):
+        root = make_project(commit=False)
+        self.addCleanup(shutil.rmtree, root)
+        bad = "x\x1b]0;PWNED\x07\x1b[2J\n  multiply  builder  \u2713 done.py"
+        log = EventLog(write_events(root, [
+            {"ts": "2026-11-17T10:09:50Z", "event": "start", "agent_id": "a1", "agent": "builder", "item": "subtract"},
+            {"ts": "2026-11-17T10:09:51Z", "event": "tool", "agent_id": "a1", "agent": "builder", "item": "subtract",
+             "tool": "Edit", "target": bad, "phase": "pre"},
+        ]))
+        log.refresh()
+        rows = log.rows(datetime(2026, 11, 17, 10, 10, 0, tzinfo=timezone.utc))
+        out = cards.render(rows, log.recent(5), valid_config(), LEAD, [], 120, False)
+        joined = "\n".join(out)
+        self.assertNotIn("\x1b", joined)
+        self.assertNotIn("\x07", joined)
+        self.assertFalse(any("\n" in line for line in out))
+        self.assertIn("builder  Edit x?]0;PWNED??[2J?  multiply  builder  \u2713 done.py", joined)
+        card = [line for line in out if line.startswith(("\u250c", "\u2502", "\u2514")) and len(line) < 60]
+        self.assertEqual(len(card), 7)
         self.assertEqual(len({len(line) for line in card}), 1)

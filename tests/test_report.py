@@ -94,6 +94,15 @@ class AgentsSectionTest(unittest.TestCase):
         self.assertIn("  no plan marker: showing every event\n", text)
         self.assertNotIn("no plan marker", self.agents(self.running()))
 
+    def test_escape_and_newline_in_target_never_reach_the_table(self):
+        bad = "x\x1b]0;PWNED\x07\x1b[2J\n  multiply  builder  \u2713 done.py"
+        text = self.agents([ev("10:00:00", "plan", target="p", agent_id=""), ev("10:09:50", "start"),
+                            ev("10:09:51", "tool", tool="Edit", target=bad, phase="pre")])
+        self.assertNotIn("\x1b", text)
+        self.assertNotIn("\x07", text)
+        self.assertNotIn("\n  multiply  builder", text)
+        self.assertIn("\u25b6 Edit x?]0;PWNED??[2J?  multiply  builder  \u2713 done.py  0m10s  1 calls\n", text)
+
     def test_agents_between_header_and_plans(self):
         text = self.agents(self.running())
         self.assertLess(text.index("agent-team \u00b7"), text.index("AGENTS"))
