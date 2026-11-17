@@ -95,6 +95,57 @@ class HookTest(unittest.TestCase):
         with open(self.log, encoding="utf-8") as handle:
             self.assertNotIn("abc123", handle.read())
 
+    def bash_target(self, command):
+        hook.handle(self.payload(hook_event_name="PreToolUse", tool_name="Bash", tool_input={"command": command}))
+        with open(self.log, encoding="utf-8") as handle:
+            text = handle.read()
+        return json.loads(text.splitlines()[-1])["target"], text
+
+    def test_bash_skips_leading_assignments(self):
+        target, text = self.bash_target("TOKEN=abc123 API_KEY=sk-SECRET1 npm test")
+        self.assertEqual(target, "npm")
+        self.assertNotIn("SECRET1", text)
+        self.assertNotIn("abc123", text)
+
+    def test_bash_only_assignments_is_empty(self):
+        self.assertEqual(self.bash_target("FOO=bar")[0], "")
+
+    def test_bash_word_without_spaces_keeps_safe_head_only(self):
+        target, text = self.bash_target("curl${IFS}-H${IFS}Authorization:SECRET2 x")
+        self.assertEqual(target, "curl")
+        self.assertNotIn("SECRET2", text)
+
+    def test_bash_path_word_keeps_base_name_and_is_capped(self):
+        self.assertEqual(self.bash_target("/home/SECRET3/bin/tool --x")[0], "tool")
+        target, _ = self.bash_target("a" * 500)
+        self.assertEqual(len(target), 64)
+
+    def test_symlinked_log_is_not_followed(self):
+        outside = os.path.join(self.root, "outside.txt")
+        with open(outside, "w") as handle:
+            handle.write("keep\n")
+        os.makedirs(os.path.dirname(self.log))
+        os.symlink(outside, self.log)
+        self.assertEqual(self.run_main(json.dumps(self.payload())), 0)
+        with open(outside) as handle:
+            self.assertEqual(handle.read(), "keep\n")
+
+    def test_plan_flag_without_file_does_not_read_stdin(self):
+        reads = []
+
+        class Spy:
+            def read(self, size=-1):
+                reads.append(size)
+                return ""
+        self.assertEqual(hook.main(["--plan"], Spy()), 0)
+        self.assertEqual(reads, [])
+        self.assertEqual(self.lines(), [])
+
+    def test_notebook_edit_uses_notebook_path(self):
+        hook.handle(self.payload(hook_event_name="PreToolUse", tool_name="NotebookEdit",
+                                 tool_input={"notebook_path": os.path.join(self.root, "nb", "a.ipynb")}))
+        self.assertEqual(self.lines()[0]["target"], os.path.join("nb", "a.ipynb"))
+
     def test_edit_target_relative_to_project(self):
         hook.handle(self.payload(hook_event_name="PreToolUse", tool_name="Read",
                                  tool_input={"file_path": os.path.join(self.root, "src", "a.py")}))

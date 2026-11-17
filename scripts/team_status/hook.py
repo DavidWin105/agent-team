@@ -1,6 +1,7 @@
 """Record agent-team hook events in the live event log. Never raises, never prints, never writes secrets."""
 import json
 import os
+import re
 import time
 
 from team_status import config
@@ -9,6 +10,10 @@ MAX_INPUT = 1024 * 1024
 PREFIX = "agent-team:"
 WORKTREES = os.path.join(".claude", "worktrees")
 FILE_TOOLS = ("Edit", "Write", "Read", "NotebookEdit")
+PATH_FIELD = {"NotebookEdit": "notebook_path"}
+ASSIGNMENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
+SAFE_HEAD = re.compile(r"^[A-Za-z0-9._+-]*")
+MAX_COMMAND = 64
 EVENTS = {
     "SubagentStart": ("start", None, None),
     "SubagentStop": ("stop", None, None),
@@ -66,7 +71,7 @@ def _target(tool, tool_input, root):
     if not isinstance(tool_input, dict):
         return ""
     if tool in FILE_TOOLS:
-        path = tool_input.get("file_path")
+        path = tool_input.get(PATH_FIELD.get(tool, "file_path"))
         if not isinstance(path, str) or not path:
             return ""
         if os.path.isabs(path):
@@ -75,14 +80,17 @@ def _target(tool, tool_input, root):
     if tool == "Bash":
         command = tool_input.get("command")
         words = command.split() if isinstance(command, str) else []
-        return words[0] if words else ""
+        words = [word for word in words if not ASSIGNMENT.match(word)]
+        if not words:
+            return ""
+        return SAFE_HEAD.match(os.path.basename(words[0])).group(0)[:MAX_COMMAND]
     return ""
 
 
 def _append(path, record):
     line = (json.dumps(record, ensure_ascii=False) + "\n").encode("utf-8")
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    fd = os.open(path, os.O_APPEND | os.O_CREAT | os.O_WRONLY, 0o644)
+    fd = os.open(path, os.O_APPEND | os.O_CREAT | os.O_WRONLY | getattr(os, "O_NOFOLLOW", 0), 0o644)
     try:
         os.write(fd, line)
     finally:
@@ -145,8 +153,9 @@ def _plan(name):
 def main(argv, stdin):
     """Entry point: always answers 0 and prints nothing."""
     try:
-        if len(argv) >= 2 and argv[0] == "--plan":
-            _plan(argv[1])
+        if argv and argv[0] == "--plan":
+            if len(argv) >= 2:
+                _plan(argv[1])
             return 0
         raw = stdin.read(MAX_INPUT + 1)
         if len(raw) > MAX_INPUT:
