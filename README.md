@@ -1,3 +1,5 @@
+**English** · [简体中文](README.zh-CN.md) · [မြန်မာ](README.my.md)
+
 # agent-team
 
 A Claude Code plugin: an AI agent team with a model per role, one workflow from plan to pull request, steps only the owner may take, and a `team-status` command for the terminal.
