@@ -156,6 +156,7 @@ In every error case, `team-adapt` writes nothing at all, never a partial set.
 
 - **Invalid `team.json`:** names the field and exits 1.
 - **Target file without the marker:** lists every such file and exits 1.
+- **Target outside the project** (through a symlinked file or folder): lists every such path and exits 1.
 - **Tool or tier removed from `team.json`:** deletes only stale files that carry the marker, prints each path it deleted, and exits 0.
 - **Codex and Cursor both configured:** prints a warning that Cursor also reads `.codex/agents/` and may load agents with Codex model IDs, then exits 0.
 

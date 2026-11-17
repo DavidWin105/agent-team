@@ -46,7 +46,8 @@ class AdaptTest(unittest.TestCase):
         self.assertEqual(code, 0, err)
         self.assertTrue(self.exists(root, ".cursor", "agents", "builder-standard.md"))
         self.assertTrue(self.exists(root, ".agents", "skills", "agent-team", "SKILL.md"))
-        self.assertIn("<!-- agent-team:start -->", open(os.path.join(root, "AGENTS.md")).read())
+        with open(os.path.join(root, "AGENTS.md")) as handle:
+            self.assertIn("<!-- agent-team:start -->", handle.read())
         self.assertIn("wrote .cursor/agents/builder-standard.md", out)
 
     def test_second_run_is_allowed_and_keeps_owner_text(self):
@@ -55,9 +56,24 @@ class AdaptTest(unittest.TestCase):
             handle.write("# Owner notes\n")
         self.assertEqual(self.run_adapt(root)[0], 0)
         self.assertEqual(self.run_adapt(root)[0], 0)
-        text = open(os.path.join(root, "GEMINI.md")).read()
+        with open(os.path.join(root, "GEMINI.md")) as handle:
+            text = handle.read()
         self.assertTrue(text.startswith("# Owner notes\n\n<!-- agent-team:start -->"))
         self.assertEqual(text.count("<!-- agent-team:start -->"), 1)
+
+    def test_symlinked_agents_md_outside_the_project_writes_nothing(self):
+        root = self.project(config_with("cursor"))
+        outside = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, outside)
+        target = os.path.join(outside, "target.txt")
+        with open(target, "w") as handle:
+            handle.write("outside\n")
+        os.symlink(target, os.path.join(root, "AGENTS.md"))
+        code, out, err = self.run_adapt(root)
+        self.assertEqual(code, 1)
+        self.assertIn("nothing written", err)
+        with open(target, "rb") as handle:
+            self.assertEqual(handle.read(), b"outside\n")
 
     def test_unmarked_file_stops_everything(self):
         root = self.project(config_with("cursor"))

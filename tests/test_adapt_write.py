@@ -59,6 +59,29 @@ class PlanChangesTest(unittest.TestCase):
         writes, deletes, problems = write.plan_changes(self.root, {}, {"AGENTS.md": BLOCK}, ())
         self.assertEqual(problems, ["AGENTS.md has only one of the agent-team markers"])
 
+    def test_out_of_order_markers_are_a_problem(self):
+        self.put("AGENTS.md", write.END + "\n" + write.START + "\n")
+        writes, deletes, problems = write.plan_changes(self.root, {}, {"AGENTS.md": BLOCK}, ())
+        self.assertEqual(problems, ["AGENTS.md has the agent-team markers out of order"])
+
+    def outside(self):
+        folder = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, folder)
+        return folder
+
+    def test_symlinked_file_outside_the_project_is_a_problem(self):
+        target = os.path.join(self.outside(), "target.txt")
+        with open(target, "w", encoding="utf-8") as handle:
+            handle.write("outside\n")
+        os.symlink(target, os.path.join(self.root, "AGENTS.md"))
+        writes, deletes, problems = write.plan_changes(self.root, {}, {"AGENTS.md": BLOCK}, ())
+        self.assertEqual(problems, ["AGENTS.md is outside the project"])
+
+    def test_symlinked_folder_outside_the_project_is_a_problem(self):
+        os.symlink(self.outside(), os.path.join(self.root, "d"))
+        writes, deletes, problems = write.plan_changes(self.root, {"d/a.md": "new"}, {}, ())
+        self.assertEqual(problems, ["d/a.md is outside the project"])
+
     def test_unreadable_target_is_a_problem(self):
         os.makedirs(os.path.join(self.root, "d"))
         with open(os.path.join(self.root, "d", "a.md"), "wb") as handle:

@@ -13,6 +13,8 @@ def with_block(text, block):
     full = START + "\n" + block + END
     if start != -1 and end > start:
         return text[:start] + full + text[end + len(END):]
+    if start != -1 and end != -1:
+        raise ValueError("has the agent-team markers out of order")
     if start != -1 or end != -1:
         raise ValueError("has only one of the agent-team markers")
     gap = "" if not text else ("\n" if text.endswith("\n") else "\n\n")
@@ -28,10 +30,19 @@ def _read(path):
         return None
 
 
+def _outside(project_dir, rel):
+    """True when rel resolves (through any symlink) to somewhere outside the project."""
+    real = os.path.realpath(os.path.join(project_dir, rel))
+    return not real.startswith(os.path.realpath(project_dir) + os.sep)
+
+
 def plan_changes(project_dir, files, blocks, generated_dirs):
     """Answer (writes, deletes, problems) without touching the disk."""
     writes, problems = {}, []
     for rel, text in sorted(files.items()):
+        if _outside(project_dir, rel):
+            problems.append("%s is outside the project" % rel)
+            continue
         try:
             current = _read(os.path.join(project_dir, rel))
         except (OSError, UnicodeDecodeError):
@@ -41,13 +52,23 @@ def plan_changes(project_dir, files, blocks, generated_dirs):
             problems.append("%s exists and was not written by team-adapt" % rel)
         writes[rel] = text
     for rel, block in sorted(blocks.items()):
+        if _outside(project_dir, rel):
+            problems.append("%s is outside the project" % rel)
+            continue
         try:
             writes[rel] = with_block(_read(os.path.join(project_dir, rel)) or "", block)
         except (OSError, UnicodeDecodeError):
             problems.append("%s cannot be read" % rel)
         except ValueError as error:
             problems.append("%s %s" % (rel, error))
-    deletes = [rel for rel in _generated_files(project_dir, generated_dirs) if rel not in files]
+    deletes = []
+    for rel in _generated_files(project_dir, generated_dirs):
+        if rel in files:
+            continue
+        if _outside(project_dir, rel):
+            problems.append("%s is outside the project" % rel)
+        else:
+            deletes.append(rel)
     return writes, deletes, problems
 
 
