@@ -76,6 +76,11 @@ def _prs(prs):
 
 
 def _waiting(plan_list, prs):
+    return ["WAITING ON OWNER"] + ["  " + item for item in (waiting_items(plan_list, prs) or ["nothing"])]
+
+
+def waiting_items(plan_list, prs):
+    """Answer the plain list of things waiting on the owner."""
     items = ["merge #%d" % pr.number for pr in (prs or [])]
     items += [
         "plan %s: %d unanswered question%s" % (plan.name, plan.unanswered, "" if plan.unanswered == 1 else "s")
@@ -85,7 +90,7 @@ def _waiting(plan_list, prs):
     items += ["plan %s: still Draft" % plan.name for plan in plan_list if first_word(plan.status) == "Draft"]
     if prs is None:
         items.append("pull requests: not checked")
-    return ["WAITING ON OWNER"] + ["  " + item for item in (items or ["nothing"])]
+    return items
 
 
 def _routing(summary, routing_path):

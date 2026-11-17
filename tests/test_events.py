@@ -126,3 +126,33 @@ class EventsTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class RecentTest(unittest.TestCase):
+    def setUp(self):
+        self.root = make_project(commit=False)
+        self.addCleanup(shutil.rmtree, self.root, True)
+
+    def test_recent_returns_newest_first(self):
+        log = EventLog(write_events(self.root, [START, PRE, POST]))
+        log.refresh()
+        events = log.recent(2)
+        self.assertEqual([e.phase for e in events], ["post", "pre"])
+        self.assertEqual(events[0].ts, "2026-11-17T14:02:30Z")
+        self.assertEqual(len(log.recent(10)), 3)
+
+    def test_recent_keeps_only_the_last_fifty(self):
+        lines = [ev("2026-11-17T14:%02d:%02dZ" % divmod(i, 60), "tool", tool="Read", target="f%d" % i, phase="pre") for i in range(80)]
+        log = EventLog(write_events(self.root, lines))
+        log.refresh()
+        events = log.recent(100)
+        self.assertEqual(len(events), 50)
+        self.assertEqual(events[0].target, "f79")
+
+    def test_recent_resets_with_the_log(self):
+        path = write_events(self.root, [START, PRE, POST])
+        log = EventLog(path)
+        log.refresh()
+        write_events(self.root, [ev("2026-11-17T15:00:00Z", "start", item="other")])
+        log.refresh()
+        self.assertEqual([e.item for e in log.recent(5)], ["other"])

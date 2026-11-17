@@ -1,12 +1,13 @@
 """Fold the live event log into one row per agent. Lines that do not read are counted, never guessed."""
 import json
-from collections import namedtuple
+from collections import deque, namedtuple
 from datetime import datetime, timezone
 
 Event = namedtuple("Event", "ts event agent_id agent item tool target phase ok")
 Row = namedtuple("Row", "agent item state doing calls seconds shared")
 SILENT_SECONDS = 300
 HEAD_BYTES = 64
+RECENT_KEPT = 50
 TIME_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
 FIELDS = ("event", "agent_id", "agent", "item", "tool", "target", "phase")
 
@@ -25,6 +26,7 @@ class EventLog:
         self._offset = 0
         self._head = b""
         self._events = []
+        self._recent = deque(maxlen=RECENT_KEPT)
 
     def refresh(self):
         """Read the complete lines added since the last call; start over if the file shrank or changed."""
@@ -59,6 +61,7 @@ class EventLog:
             return
         self.seen += 1
         self._events.append(parsed)
+        self._recent.append(parsed[0])
         if parsed[0].event == "plan":
             self.plan = parsed[0].target
 
@@ -69,6 +72,10 @@ class EventLog:
             if event.event in ("start", "tool", "stop"):
                 groups.setdefault(_key(event), []).append((event, when))
         return [_fold(group, now) for group in groups.values()]
+
+    def recent(self, n):
+        """Answer the newest n parsed Events, newest first (from the last 50 kept)."""
+        return list(self._recent)[::-1][:n]
 
     def _since_last_plan(self):
         last = max((i for i, (event, _) in enumerate(self._events) if event.event == "plan"), default=-1)

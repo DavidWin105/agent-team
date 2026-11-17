@@ -26,9 +26,9 @@ class WatchTest(unittest.TestCase):
         self.addCleanup(shutil.rmtree, bindir)
         self.env = env_with(bindir)
 
-    def watch(self, argv, sleep, max_frames=2):
+    def watch(self, argv, sleep, max_frames=2, width=80):
         out, err = io.StringIO(), io.StringIO()
-        code = cli.main(argv, env=self.env, out=out, err=err, sleep=sleep, max_frames=max_frames)
+        code = cli.main(argv, env=self.env, out=out, err=err, sleep=sleep, max_frames=max_frames, width=width, color=False)
         return code, out.getvalue(), err.getvalue()
 
     def ignore_log(self):
@@ -55,6 +55,25 @@ class WatchTest(unittest.TestCase):
         self.assertIn("first-item", frames[1])
         self.assertIn("second-item", frames[2])
         self.assertEqual(slept, [1])
+
+    def test_watch_uses_cards_when_wide_and_table_when_narrow(self):
+        write_events(self.root, [{"ts": "2026-11-17T10:00:00Z", "event": "start", "agent_id": "a1",
+                                  "agent": "builder", "item": "first-item"}])
+        _, wide, _ = self.watch(["--watch", self.root], lambda s: None, max_frames=1, width=120)
+        _, narrow, _ = self.watch(["--watch", self.root], lambda s: None, max_frames=1, width=99)
+        self.assertIn("┌", wide)
+        self.assertIn("WAITING ON YOU", wide)
+        self.assertIn("builder · sonnet", wide)
+        self.assertNotIn("┌", narrow)
+        self.assertIn("WAITING ON OWNER", narrow)
+        self.assertIn("1 silent", wide)
+
+    def test_snapshot_stays_a_table_even_when_wide(self):
+        out = io.StringIO()
+        cli.main([self.root], env=self.env, out=out, err=io.StringIO(), width=200, color=True)
+        self.assertNotIn("┌", out.getvalue())
+        self.assertNotIn("\x1b", out.getvalue())
+        self.assertIn("WAITING ON OWNER", out.getvalue())
 
     def test_watch_flag_may_follow_the_folder(self):
         code, out, _ = self.watch([self.root, "--watch"], lambda s: None, max_frames=1)

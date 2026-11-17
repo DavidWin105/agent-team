@@ -133,3 +133,16 @@ def _check_rules(rules):
     if isinstance(rerun, bool) or not isinstance(rerun, int) or rerun < 1:
         problems.append("rules.rerun-up-after-failures must be a whole number of 1 or more")
     return problems
+
+
+def model_for(cfg, agent):
+    """Answer the model name for a core role or a specialist agent, else None."""
+    try:
+        models = cfg["tiers"][TOOL]
+        tier = cfg["roles"].get(agent)
+        if tier is None:
+            tier = next((item["tier"] for item in cfg.get("specialists", []) if item["agent"] == agent), None)
+        model = models.get(tier) if tier is not None else None
+    except (KeyError, TypeError, AttributeError, StopIteration):
+        return None
+    return model if isinstance(model, str) else None

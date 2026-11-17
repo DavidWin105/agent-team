@@ -1,18 +1,25 @@
 """team-status entry point: gather, render, set the exit code (spec section 9)."""
 import os
+import shutil
 import sys
 import time
+from datetime import datetime, timezone
 
-from team_status import config, plans, repo, report, routing
+from team_status import cards, config, plans, repo, report, routing
 from team_status.events import EventLog
 
 CLEAR_SCREEN = "\x1b[H\x1b[2J"
+CARD_MIN_WIDTH = 100
 SLOW_EVERY = 10  # frames between git and gh re-gathers in --watch
 
 
-def main(argv, env=None, out=None, err=None, now=None, sleep=time.sleep, max_frames=None):
+def main(argv, env=None, out=None, err=None, now=None, sleep=time.sleep, max_frames=None, width=None, color=None):
     out = sys.stdout if out is None else out
     err = sys.stderr if err is None else err
+    if width is None:
+        width = shutil.get_terminal_size().columns
+    if color is None:
+        color = _is_terminal(out) and "NO_COLOR" not in (os.environ if env is None else env)
     watch = "--watch" in argv
     args = [arg for arg in argv if arg != "--watch"]
     project = os.path.abspath(args[0] if args else os.getcwd())
@@ -41,7 +48,7 @@ def main(argv, env=None, out=None, err=None, now=None, sleep=time.sleep, max_fra
             if frame % SLOW_EVERY == 0:
                 slow = _gather(project, env, slow[0] if slow else head, reread=frame > 0)
             out.write(CLEAR_SCREEN)
-            out.write(_frame(project, cfg, log, slow, events, now))
+            out.write(_frame(project, cfg, log, slow, events, now, width, color))
             out.flush()
             frame += 1
             if max_frames is None or frame < max_frames:
@@ -63,17 +70,22 @@ def _gather(project, env, head, reread=False):
     return head, repo.worktrees(project, env), repo.open_prs(project, env)
 
 
-def _frame(project, cfg, log, slow, events, now):
+def _frame(project, cfg, log, slow, events, now, width=0, color=False):
     """Refresh the event log and render one frame of text."""
     paths = cfg["paths"]
     log_path = os.path.join(project, paths["routing-log"])
     summary = routing.summarize(log_path) if os.path.isfile(log_path) else None
     log.refresh()
     head, worktrees, prs = slow
+    plan_list = plans.read_plans(project, paths)
+    if width >= CARD_MIN_WIDTH:
+        rows = log.rows(now or datetime.now(timezone.utc))
+        lines = cards.render(rows, log.recent(5), cfg, _lead_line(rows), report.waiting_items(plan_list, prs), width, color)
+        return "\n".join(lines) + "\n"
     return report.render(
         os.path.basename(project),
         head,
-        plans.read_plans(project, paths),
+        plan_list,
         worktrees,
         prs,
         summary,
@@ -82,3 +94,20 @@ def _frame(project, cfg, log, slow, events, now):
         now=now,
         events_path=events,
     )
+
+
+def _is_terminal(out):
+    try:
+        return bool(out.isatty())
+    except (AttributeError, ValueError):
+        return False
+
+
+def _lead_line(rows):
+    """Answer '2 running · 1 done' from the rows; zero counts are left out."""
+    parts = []
+    for state in ("running", "done", "failed", "silent"):
+        count = sum(1 for row in rows if row.state == state)
+        if count:
+            parts.append("%d %s" % (count, state))
+    return " · ".join(parts) or "no agents yet"

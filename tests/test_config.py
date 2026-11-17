@@ -151,3 +151,17 @@ class ValidateTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ModelForTest(unittest.TestCase):
+    def test_model_for_core_role(self):
+        self.assertEqual(config.model_for(valid_config(), "builder"), "sonnet")
+        self.assertEqual(config.model_for(valid_config(), "security-reviewer"), "fable")
+
+    def test_model_for_specialist(self):
+        self.assertEqual(config.model_for(valid_config(), "devops-sre"), "opus")
+
+    def test_model_for_unknown_or_malformed(self):
+        self.assertIsNone(config.model_for(valid_config(), "stranger"))
+        self.assertIsNone(config.model_for({}, "builder"))
+        self.assertIsNone(config.model_for(None, "builder"))
