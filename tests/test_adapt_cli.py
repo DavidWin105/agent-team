@@ -3,11 +3,14 @@ import io
 import json
 import os
 import shutil
+import tempfile
 import unittest
+from unittest import mock
 
 from fixtures import make_project, valid_config
-from team_adapt import cli
+from team_adapt import cli, init
 from team_status.config import TIER_NAMES
+from test_adapt_init import CURSOR_RUN
 
 
 def config_with(*tools):
@@ -15,6 +18,12 @@ def config_with(*tools):
     for tool in tools:
         cfg["tiers"][tool] = {tier: "%s-%s" % (tool, tier) for tier in TIER_NAMES}
     return cfg
+
+
+def answer_prompts(*replies):
+    """Patch run_init's default ask: it was bound to builtins.input at definition time, so patching input misses it."""
+    fake_ask = mock.Mock(side_effect=list(replies))
+    return mock.patch.object(init.run_init, "__defaults__", (fake_ask,) + init.run_init.__defaults__[1:])
 
 
 class AdaptTest(unittest.TestCase):
@@ -89,6 +98,49 @@ class AdaptTest(unittest.TestCase):
         code, out, err = self.run_adapt(self.project(valid_config()))
         self.assertEqual(code, 0)
         self.assertIn("nothing to write", out)
+
+
+class InitFlagTest(unittest.TestCase):
+    def fresh_folder(self):
+        root = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, root)
+        return root
+
+    def run_init_flag(self, root):
+        out, err = io.StringIO(), io.StringIO()
+        code = cli.main(["--init", root], out=out, err=err)
+        return code, out.getvalue(), err.getvalue()
+
+    def test_stopped_answer_writes_nothing(self):
+        for stop in (EOFError(), KeyboardInterrupt()):
+            with self.subTest(stop=type(stop).__name__):
+                root = self.fresh_folder()
+                with answer_prompts(stop):
+                    code, out, err = self.run_init_flag(root)
+                self.assertEqual(code, 1)
+                self.assertIn("stopped: no answer, nothing written", err)
+                self.assertFalse(os.path.exists(os.path.join(root, ".claude", "team.json")))
+
+    def test_valid_answers_write_team_json_then_adapt(self):
+        root = self.fresh_folder()
+        with answer_prompts(*CURSOR_RUN):
+            code, out, err = self.run_init_flag(root)
+        self.assertEqual(code, 0, err)
+        self.assertTrue(os.path.exists(os.path.join(root, ".claude", "team.json")))
+        self.assertTrue(os.path.exists(os.path.join(root, ".cursor", "agents", "builder-standard.md")))
+        self.assertIn("wrote .claude/team.json", out)
+        self.assertIn("wrote .cursor/agents/builder-standard.md", out)
+
+    def test_kept_team_json_still_runs_adapt(self):
+        for reply in ("", "n", "yes"):
+            with self.subTest(reply=reply):
+                root = make_project(config=config_with("cursor"), commit=False)
+                self.addCleanup(shutil.rmtree, root)
+                with answer_prompts(reply):
+                    code, out, err = self.run_init_flag(root)
+                self.assertEqual(code, 0, err)
+                self.assertIn("kept .claude/team.json", out)
+                self.assertTrue(os.path.exists(os.path.join(root, ".cursor", "agents", "builder-standard.md")))
 
 
 if __name__ == "__main__":
