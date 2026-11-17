@@ -2,7 +2,7 @@
 import re
 
 from team_status.config import model_for
-from team_status.report import GLYPHS, shared_note
+from team_status.report import GLYPHS, calls_text, shared_note
 
 MAX_PER_ROW = 4
 GAP = 2
@@ -108,7 +108,7 @@ def _card(row, cfg, width, paint):
     text = row.doing if row.state == "running" and row.doing else row.state
     state = paint("%s %s" % (GLYPHS[row.state], text), STATE_COLOR[row.state])
     footer_left = "%dm%02ds" % divmod(row.seconds, 60)
-    footer_right = "%d calls" % row.calls
+    footer_right = calls_text(row.calls)
     gap = max(inner - len(footer_left) - len(footer_right), 3)
     footer = paint(footer_left + " " * gap + footer_right, GREY)
     return _box([title, item, state, "", footer], width, code or STATE_COLOR[row.state], paint)

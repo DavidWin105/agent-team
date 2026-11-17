@@ -256,7 +256,7 @@ class MainTest(unittest.TestCase):
         code, out, _ = self.run_main(root, self.gh_env(), now=now)
         self.assertEqual(code, 0)
         self.assertLess(out.index("AGENTS"), out.index("PLANS"))
-        self.assertIn("subtract  builder        \u25b6 Edit test_calc.py  3m12s  1 calls", out)
+        self.assertIn("subtract  builder        \u25b6 Edit test_calc.py  3m12s  1 call", out)
 
     def test_snapshot_without_events_says_so(self):
         code, out, _ = self.run_main(self.project(), self.gh_env())

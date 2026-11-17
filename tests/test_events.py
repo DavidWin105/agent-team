@@ -1,9 +1,10 @@
+import json
 import os
 import shutil
 import unittest
 from datetime import datetime, timedelta, timezone
 
-from team_status.events import EventLog, Row
+from team_status.events import EventLog, Row, OPEN_CALL_LIMIT
 from fixtures import make_project, write_events
 
 NOW = datetime(2026, 11, 17, 14, 5, 23, tzinfo=timezone.utc)
@@ -58,6 +59,35 @@ class EventsTest(unittest.TestCase):
         rows = self.rows([old, plan, START])
         self.assertEqual([r.agent for r in rows], ["builder"])
         self.assertEqual(self.log.plan, "plan-two.md")
+
+    def test_plan_marker_drops_earlier_events(self):
+        old = ev("2026-11-17T13:00:00Z", "start", agent_id="old", agent="reviewer")
+        plan = {"ts": "2026-11-17T14:00:00Z", "event": "plan", "target": "plan-two.md"}
+        path = write_events(self.root, [old, START])
+        log = EventLog(path)
+        log.refresh()
+        self.assertEqual(len(log._events), 2)
+        with open(path, "a", encoding="utf-8") as handle:
+            handle.write(json.dumps(plan) + "\n" + json.dumps(PRE) + "\n")
+        log.refresh()
+        self.assertEqual([e.event for e, _ in log._events], ["plan", "tool"])
+        self.assertEqual([r.agent for r in log.rows(NOW)], ["builder"])
+        self.assertEqual(log.seen, 4)
+
+    def test_recent_only_current_run(self):
+        old = ev("2026-11-17T13:00:00Z", "start", agent_id="old", agent="reviewer")
+        plan = {"ts": "2026-11-17T14:00:00Z", "event": "plan", "target": "plan-two.md"}
+        self.rows([old, plan, START, PRE])
+        self.assertEqual([e.event for e in self.log.recent(10)], ["tool", "start", "plan"])
+        self.assertNotIn("reviewer", [e.agent for e in self.log.recent(10)])
+
+    def test_open_call_older_than_limit_goes_silent(self):
+        pre = ev("2026-11-17T14:02:20Z", "tool", tool="Bash", target="make", phase="pre")
+        base = datetime(2026, 11, 17, 14, 2, 20, tzinfo=timezone.utc)
+        within = self.rows([START, pre], now=base + timedelta(seconds=OPEN_CALL_LIMIT))[0]
+        self.assertEqual((within.state, within.doing), ("running", "Bash make"))
+        row = self.rows([START, pre], now=base + timedelta(seconds=OPEN_CALL_LIMIT + 1))[0]
+        self.assertEqual((row.state, row.doing, row.seconds), ("silent", "", 9))
 
     def test_no_plan_marker_shows_everything(self):
         self.rows([START])

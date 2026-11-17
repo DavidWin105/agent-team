@@ -2,6 +2,7 @@
 from datetime import datetime, timezone
 
 from team_status.config import DEFAULT_EVENTS
+from team_status.events import printable
 from team_status.plans import first_word
 
 PLAN_NAME_WIDTH = 36
@@ -32,8 +33,8 @@ def format_agents(log, now, events_path):
         status_width = max(len(text) for text in status)
         for row, text in zip(rows, status):
             lines.append(
-                "  %-*s  %-*s %-*s  %s  %d calls"
-                % (item_width, row.item or "-", AGENT_NAME_WIDTH, row.agent or "-", status_width, text, _clock(row.seconds), row.calls)
+                "  %-*s  %-*s %-*s  %s  %s"
+                % (item_width, row.item or "-", AGENT_NAME_WIDTH, row.agent or "-", status_width, text, _clock(row.seconds), calls_text(row.calls))
             )
             if row.shared > 1:
                 lines.append("  " + shared_note(row))
@@ -52,6 +53,11 @@ def log_notes(log, rows, events_path):
     if log.plan is None and log.seen:
         notes.append("no plan marker: showing every event")
     return notes
+
+
+def calls_text(count):
+    """Answer "1 call" or "N calls"."""
+    return "%d call%s" % (count, "" if count == 1 else "s")
 
 
 def shared_note(row):
@@ -78,17 +84,17 @@ def _plans(plan_list):
     rows = []
     for plan in plan_list:
         if plan.problem:
-            rows.append("  %-*s %s" % (PLAN_NAME_WIDTH, plan.name, plan.problem))
+            rows.append("  %-*s %s" % (PLAN_NAME_WIDTH, printable(plan.name), printable(plan.problem)))
         else:
-            status = first_word(plan.status)
-            rows.append("  %-*s %-9s lead: %s" % (PLAN_NAME_WIDTH, plan.name, status, plan.lead or "(none)"))
+            status = printable(first_word(plan.status))
+            rows.append("  %-*s %-9s lead: %s" % (PLAN_NAME_WIDTH, printable(plan.name), status, printable(plan.lead or "(none)")))
     return ["PLANS"] + rows
 
 
 def _prs(prs):
     if prs is None:
         return ["OPEN PRs    not checked: gh unavailable"]
-    return ["OPEN PRs    %d" % len(prs)] + ["  #%d %s" % (pr.number, pr.title) for pr in prs]
+    return ["OPEN PRs    %d" % len(prs)] + ["  #%d %s" % (pr.number, printable(pr.title)) for pr in prs]
 
 
 def _waiting(plan_list, prs):
@@ -99,11 +105,11 @@ def waiting_items(plan_list, prs):
     """Answer the plain list of things waiting on the owner."""
     items = ["merge #%d" % pr.number for pr in (prs or [])]
     items += [
-        "plan %s: %d unanswered question%s" % (plan.name, plan.unanswered, "" if plan.unanswered == 1 else "s")
+        "plan %s: %d unanswered question%s" % (printable(plan.name), plan.unanswered, "" if plan.unanswered == 1 else "s")
         for plan in plan_list
         if plan.unanswered
     ]
-    items += ["plan %s: still Draft" % plan.name for plan in plan_list if first_word(plan.status) == "Draft"]
+    items += ["plan %s: still Draft" % printable(plan.name) for plan in plan_list if first_word(plan.status) == "Draft"]
     if prs is None:
         items.append("pull requests: not checked")
     return items

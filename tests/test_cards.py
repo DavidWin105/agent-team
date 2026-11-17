@@ -107,6 +107,11 @@ class CardsTest(unittest.TestCase):
         self.assertLess(out.index("2 lines not read"), log_line)
         self.assertGreater(out.index("2 lines not read"), max(i for i, line in enumerate(out) if "┘" in line and i < log_line))
 
+    def test_one_call_is_singular(self):
+        out = self.text([row(calls=1)])
+        self.assertIn("1 call", out)
+        self.assertNotIn("1 calls", out)
+
     def test_shared_row_note_names_the_card(self):
         out = draw([row(shared=2)])
         self.assertIn("subtract · builder: 2 agents share this row", out)

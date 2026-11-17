@@ -7,7 +7,7 @@ import time
 from team_status import config
 from team_status.events import printable
 
-MAX_INPUT = 1024 * 1024
+MAX_INPUT = 8 * 1024 * 1024
 PREFIX = "agent-team:"
 WORKTREES = os.path.join(".claude", "worktrees")
 FILE_TOOLS = ("Edit", "Write", "Read", "NotebookEdit")
