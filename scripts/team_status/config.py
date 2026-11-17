@@ -1,6 +1,7 @@
 """Load and check a project's .claude/team.json (spec section 5)."""
 import json
 import os
+import re
 
 CONFIG_PATH = os.path.join(".claude", "team.json")
 TOOL = "claude-code"
@@ -112,7 +113,16 @@ def _check_paths(paths):
     problems = ["paths.%s must be a non-empty string" % key for key in PATH_KEYS if not _is_text(paths.get(key))]
     if "events" in paths and not _is_text(paths["events"]):
         problems.append("paths.events must be a non-empty string")
+    elif "events" in paths and not _inside_project(paths["events"]):
+        problems.append("paths.events must be a relative path inside the project")
     return problems
+
+
+def _inside_project(path):
+    """Answer whether a relative path stays inside the project: not absolute, no ".." part."""
+    if os.path.isabs(path) or path.startswith(("/", "\\")) or re.match(r"^[A-Za-z]:", path):
+        return False
+    return ".." not in re.split(r"[\\/]", path)
 
 
 def events_path(cfg):

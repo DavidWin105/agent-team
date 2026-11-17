@@ -5,6 +5,7 @@ import re
 import time
 
 from team_status import config
+from team_status.events import printable
 
 MAX_INPUT = 1024 * 1024
 PREFIX = "agent-team:"
@@ -68,22 +69,31 @@ def _inside(root, path):
 
 
 def _target(tool, tool_input, root):
+    """Answer (target, item): a worktree file is shown relative to its worktree, and names that worktree."""
     if not isinstance(tool_input, dict):
-        return ""
+        return "", ""
     if tool in FILE_TOOLS:
         path = tool_input.get(PATH_FIELD.get(tool, "file_path"))
         if not isinstance(path, str) or not path:
-            return ""
-        if os.path.isabs(path):
-            return _inside(root, path) or os.path.basename(path)
-        return _inside(root, os.path.join(root, path)) or os.path.basename(path)
+            return "", ""
+        rel = _inside(root, path if os.path.isabs(path) else os.path.join(root, path))
+        return _in_worktree(rel) if rel else (os.path.basename(path), "")
     if tool == "Bash":
         command = tool_input.get("command")
         words = command.split() if isinstance(command, str) else []
         if not words or ASSIGNMENT.match(words[0]):
-            return ""  # never look past the first word: a value may hide a secret
-        return SAFE_HEAD.match(os.path.basename(words[0])).group(0)[:MAX_COMMAND]
-    return ""
+            return "", ""  # never look past the first word: a value may hide a secret
+        return SAFE_HEAD.match(os.path.basename(words[0])).group(0)[:MAX_COMMAND], ""
+    return "", ""
+
+
+def _in_worktree(rel):
+    """Answer (path inside the worktree, slug) for .claude/worktrees/<slug>/<path>, else (rel, "")."""
+    parts = rel.split(os.sep)
+    prefix = WORKTREES.split(os.sep)
+    if len(parts) > len(prefix) + 1 and parts[:len(prefix)] == prefix and parts[len(prefix)]:
+        return os.path.join(*parts[len(prefix) + 1:]), parts[len(prefix)]
+    return rel, ""
 
 
 def _append(path, record):
@@ -127,11 +137,14 @@ def handle(payload, env=None):
         if role is None or not isinstance(agent_id, str) or not agent_id:
             return
         kind, phase, ok = mapped
-        record = {"ts": _now(), "event": kind, "agent_id": agent_id, "agent": role, "item": _item(cwd)}
+        item = _item(cwd)
+        record = {"ts": _now(), "event": kind, "agent_id": agent_id, "agent": printable(role), "item": printable(item)}
         if kind == "tool":
             tool = payload.get("tool_name")
             tool = tool if isinstance(tool, str) else ""
-            record.update(tool=tool, target=_target(tool, payload.get("tool_input"), root), phase=phase, ok=ok)
+            target, path_item = _target(tool, payload.get("tool_input"), root)
+            record.update(item=printable(item or path_item), tool=printable(tool), target=printable(target),
+                          phase=phase, ok=ok)
             if ok is None:
                 del record["ok"]
         _append(path, record)

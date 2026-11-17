@@ -4,6 +4,7 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
 import unittest
 
 from team_status import hook
@@ -81,7 +82,7 @@ class HookTest(unittest.TestCase):
         self.assertEqual(got[0]["item"], "subtract")
         self.assertEqual(got[5]["item"], "")
         self.assertEqual((got[1]["phase"], got[1]["tool"]), ("pre", "Edit"))
-        self.assertEqual(got[1]["target"], os.path.join(".claude/worktrees/subtract", "calc.py"))
+        self.assertEqual(got[1]["target"], "calc.py")
         self.assertEqual((got[2]["phase"], got[2]["ok"]), ("post", True))
         self.assertEqual((got[3]["phase"], got[3]["ok"]), ("post", False))
         self.assertNotIn("ok", got[4])
@@ -177,7 +178,49 @@ class HookTest(unittest.TestCase):
         with open(self.log, "rb") as handle:
             data = handle.read()
         self.assertEqual(data.count(b"\n"), 1)
-        self.assertEqual(self.lines()[0]["target"], "a\nb.py")
+        self.assertEqual(self.lines()[0]["target"], "a?b.py")
+
+    def test_control_characters_never_reach_the_log(self):
+        wt = os.path.join(self.root, ".claude/worktrees/su\x1bb")
+        bad = os.path.join(self.root, "x\x1b]0;PWNED\x07\x1b[2J\n  multiply\u2028.py")
+        hook.handle(self.payload(cwd=wt, hook_event_name="PreToolUse", tool_name="Edit",
+                                 tool_input={"file_path": bad}))
+        hook.handle(self.payload(cwd=wt, hook_event_name="PreToolUse", tool_name="Gr\x1b[2Jep"))
+        got = self.lines()
+        self.assertEqual((got[0]["item"], got[0]["target"]), ("su?b", "x?]0;PWNED??[2J?  multiply?.py"))
+        self.assertEqual(got[1]["tool"], "Gr?[2Jep")
+        with open(self.log, "rb") as handle:
+            self.assertNotIn(b"\\u001b", handle.read())
+
+    def test_worktree_file_target_is_relative_to_the_worktree(self):
+        wt = os.path.join(self.root, ".claude/worktrees/subtract")
+        hook.handle(self.payload(cwd=wt, hook_event_name="PreToolUse", tool_name="Edit",
+                                 tool_input={"file_path": os.path.join(wt, "src", "calc.py")}))
+        hook.handle(self.payload(cwd=wt, hook_event_name="PreToolUse", tool_name="Read",
+                                 tool_input={"file_path": os.path.join(self.root, "README.md")}))
+        self.assertEqual([x["target"] for x in self.lines()], [os.path.join("src", "calc.py"), "README.md"])
+
+    def test_item_from_worktree_file_when_cwd_has_none(self):
+        wt = os.path.join(self.root, ".claude/worktrees/subtract")
+        hook.handle(self.payload(hook_event_name="PreToolUse", tool_name="Edit",
+                                 tool_input={"file_path": os.path.join(wt, "calc.py")}))
+        hook.handle(self.payload(hook_event_name="PreToolUse", tool_name="Edit",
+                                 tool_input={"file_path": os.path.join(self.root, "calc.py")}))
+        got = self.lines()
+        self.assertEqual((got[0]["item"], got[0]["target"]), ("subtract", "calc.py"))
+        self.assertEqual((got[1]["item"], got[1]["target"]), ("", "calc.py"))
+
+    def test_events_path_outside_the_project_writes_nothing(self):
+        outside = tempfile.mkdtemp(prefix="team-outside-", dir=os.path.dirname(self.root))
+        self.addCleanup(shutil.rmtree, outside, True)
+        for events in ("../%s/x.jsonl" % os.path.basename(outside), os.path.join(outside, "y.jsonl")):
+            with open(os.path.join(self.root, ".claude/team.json"), encoding="utf-8") as handle:
+                cfg = json.load(handle)
+            cfg["paths"]["events"] = events
+            with open(os.path.join(self.root, ".claude/team.json"), "w", encoding="utf-8") as handle:
+                json.dump(cfg, handle)
+            hook.handle(self.payload())
+            self.assertEqual(os.listdir(outside), [], events)
 
     def run_main(self, data, argv=()):
         out = io.StringIO()

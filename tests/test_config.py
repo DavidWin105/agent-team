@@ -131,6 +131,15 @@ class ValidateTest(unittest.TestCase):
             data["paths"] = {**data["paths"], "events": bad}
             self.assertEqual(config.validate(data), ["paths.events must be a non-empty string"])
 
+    def test_events_must_stay_inside_the_project(self):
+        for bad in ("/tmp/e.jsonl", "../outside/x.jsonl", "logs/../../x.jsonl", "a/..", "..\\x.jsonl", "\\x.jsonl"):
+            data = valid_config()
+            data["paths"] = {**data["paths"], "events": bad}
+            self.assertEqual(config.validate(data), ["paths.events must be a relative path inside the project"], bad)
+        data = valid_config()
+        data["paths"] = {**data["paths"], "events": "logs/..e/x.jsonl"}
+        self.assertEqual(config.validate(data), [])
+
     def test_rules_and_specialists_are_optional(self):
         data = valid_config()
         del data["rules"]
