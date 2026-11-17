@@ -30,7 +30,7 @@ def main(argv, env=None, out=None, err=None, now=None, sleep=time.sleep, max_fra
     events = config.events_path(cfg)
     log = EventLog(os.path.join(project, events))
     if not watch:
-        out.write(_frame(project, cfg, head, log, _gather(project, env), events, now))
+        out.write(_frame(project, cfg, log, _gather(project, env, head), events, now))
         return 0
     if not repo.is_ignored(project, events, env):
         print("team-status: %s is not ignored by git" % events, file=err)
@@ -39,9 +39,9 @@ def main(argv, env=None, out=None, err=None, now=None, sleep=time.sleep, max_fra
     try:
         while max_frames is None or frame < max_frames:
             if frame % SLOW_EVERY == 0:
-                slow = _gather(project, env)
+                slow = _gather(project, env, slow[0] if slow else head, reread=frame > 0)
             out.write(CLEAR_SCREEN)
-            out.write(_frame(project, cfg, head, log, slow, events, now))
+            out.write(_frame(project, cfg, log, slow, events, now))
             out.flush()
             frame += 1
             if max_frames is None or frame < max_frames:
@@ -51,18 +51,25 @@ def main(argv, env=None, out=None, err=None, now=None, sleep=time.sleep, max_fra
     return 0
 
 
-def _gather(project, env):
-    """Answer the slow-changing git and gh state: (worktrees, open pull requests)."""
-    return repo.worktrees(project, env), repo.open_prs(project, env)
+def _gather(project, env, head, reread=False):
+    """Answer the slow-changing git and gh state: (head, worktrees, open pull requests).
+
+    With reread, the head is read again; if git cannot answer, the last head is kept."""
+    if reread:
+        try:
+            head = repo.git_head(project, env)
+        except repo.NotARepo:
+            pass
+    return head, repo.worktrees(project, env), repo.open_prs(project, env)
 
 
-def _frame(project, cfg, head, log, slow, events, now):
+def _frame(project, cfg, log, slow, events, now):
     """Refresh the event log and render one frame of text."""
     paths = cfg["paths"]
     log_path = os.path.join(project, paths["routing-log"])
     summary = routing.summarize(log_path) if os.path.isfile(log_path) else None
     log.refresh()
-    worktrees, prs = slow
+    head, worktrees, prs = slow
     return report.render(
         os.path.basename(project),
         head,

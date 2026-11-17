@@ -95,6 +95,57 @@ class WatchTest(unittest.TestCase):
         self.assertEqual(len(calls), 2)
 
 
+class WatchHeadTest(WatchTest):
+    def test_head_reread_at_frame_10_and_not_before(self):
+        heads = []
+        real = cli.repo.git_head
+
+        def counting(*args, **kwargs):
+            result = real(*args, **kwargs)
+            heads.append(result)
+            return result
+
+        cli.repo.git_head = counting
+        self.addCleanup(setattr, cli.repo, "git_head", real)
+        self.ignore_log()
+        self.watch(["--watch", self.root], lambda s: None, max_frames=10)
+        self.assertEqual(len(heads), 1)  # startup only
+        heads.clear()
+        self.watch(["--watch", self.root], lambda s: None, max_frames=11)
+        self.assertEqual(len(heads), 2)  # startup + frame 10
+
+    def test_head_shown_follows_new_commit_at_frame_10(self):
+        self.ignore_log()
+        count = []
+
+        def sleep(seconds):
+            count.append(1)
+            if len(count) == 5:
+                subprocess.run(["git", "checkout", "-q", "-b", "later"], cwd=self.root, check=True)
+
+        _, out, _ = self.watch(["--watch", self.root], sleep, max_frames=11)
+        frames = out.split(CLEAR)
+        self.assertNotIn("later", frames[10])
+        self.assertIn("later", frames[11])
+
+    def test_head_kept_when_git_fails_on_refresh(self):
+        self.ignore_log()
+        real = cli.repo.git_head
+        calls = []
+
+        def flaky(*args, **kwargs):
+            calls.append(1)
+            if len(calls) > 1:
+                raise cli.repo.NotARepo("x")
+            return real(*args, **kwargs)
+
+        cli.repo.git_head = flaky
+        self.addCleanup(setattr, cli.repo, "git_head", real)
+        code, out, _ = self.watch(["--watch", self.root], lambda s: None, max_frames=11)
+        self.assertEqual(code, 0)
+        self.assertIn("main", out.split(CLEAR)[11])
+
+
 class MainTest(unittest.TestCase):
     def run_main(self, root, env=None, now=None):
         out, err = io.StringIO(), io.StringIO()
