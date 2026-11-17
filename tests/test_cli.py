@@ -16,6 +16,7 @@ GH_ONE_PR = "echo '[{\"number\": 7, \"title\": \"feat: made-up item\"}]'"
 
 
 CLEAR = "\x1b[H\x1b[2J"
+WARNING = "WARNING: .claude/team/events.jsonl is not ignored by git; add .claude/team/ to .gitignore"
 
 
 class WatchTest(unittest.TestCase):
@@ -89,20 +90,74 @@ class WatchTest(unittest.TestCase):
         self.assertEqual(out.count(CLEAR), 1)
         self.assertNotIn("Traceback", err)
 
-    def test_watch_warns_once_when_log_not_ignored(self):
-        code, _, err = self.watch(["--watch", self.root], lambda s: None)
-        self.assertEqual(err, "team-status: .claude/team/events.jsonl is not ignored by git\n")
+    def start_event(self, **fields):
+        line = {"ts": "2026-11-17T10:00:00Z", "event": "start", "agent_id": "a1", "agent": "builder", "item": "first-item"}
+        line.update(fields)
+        return line
+
+    def test_watch_warns_in_every_frame_when_log_not_ignored(self):
+        write_events(self.root, [self.start_event()])
+        for width in (80, 120):
+            code, out, err = self.watch(["--watch", self.root], lambda s: None, width=width)
+            frames = out.split(CLEAR)[1:]
+            self.assertEqual((code, err, len(frames)), (0, "", 2))
+            for frame in frames:
+                self.assertIn(WARNING + "\n", frame, width)
 
     def test_watch_no_warning_when_ignored(self):
         self.ignore_log()
-        code, _, err = self.watch(["--watch", self.root], lambda s: None)
-        self.assertEqual(err, "")
+        write_events(self.root, [self.start_event()])
+        for width in (80, 120):
+            code, out, err = self.watch(["--watch", self.root], lambda s: None, width=width)
+            self.assertEqual(err, "")
+            self.assertNotIn("WARNING", out)
 
-    def test_snapshot_never_warns(self):
+    def test_no_warning_while_the_log_does_not_exist(self):
+        for width in (80, 120):
+            _, out, _ = self.watch(["--watch", self.root], lambda s: None, width=width)
+            self.assertNotIn("WARNING", out)
+
+    def test_snapshot_warns_when_log_not_ignored(self):
+        write_events(self.root, [self.start_event()])
         out, err = io.StringIO(), io.StringIO()
         cli.main([self.root], env=self.env, out=out, err=err)
         self.assertEqual(err.getvalue(), "")
         self.assertNotIn(CLEAR, out.getvalue())
+        lines = out.getvalue().splitlines()
+        self.assertEqual(lines[1], WARNING)
+        self.assertLess(lines.index(WARNING), lines.index("AGENTS"))
+        self.ignore_log()
+        out = io.StringIO()
+        cli.main([self.root], env=self.env, out=out, err=io.StringIO())
+        self.assertNotIn("WARNING", out.getvalue())
+
+    def test_cards_show_every_log_note(self):
+        self.ignore_log()
+        _, out, _ = self.watch(["--watch", self.root], lambda s: None, max_frames=1, width=120)
+        self.assertIn("\nno agent events recorded yet (.claude/team/events.jsonl)\n", out)
+        write_events(self.root, [self.start_event(agent_id=""), self.start_event(agent_id=""), "{broken"])
+        _, out, _ = self.watch(["--watch", self.root], lambda s: None, max_frames=1, width=120)
+        self.assertIn("\nfirst-item · builder: 2 agents share this row\n", out)
+        self.assertIn("\n1 line not read\n", out)
+        self.assertIn("\nno plan marker: showing every event\n", out)
+        write_events(self.root, [self.start_event(), {"ts": "2026-11-17T10:01:00Z", "event": "plan", "target": "p.md"}])
+        _, out, _ = self.watch(["--watch", self.root], lambda s: None, max_frames=1, width=120)
+        self.assertIn("\nno agent activity since the last plan marker\n", out)
+        self.assertNotIn("no plan marker", out)
+
+    def test_watch_reads_the_terminal_width_every_frame(self):
+        sizes = [os.terminal_size((120, 40)), os.terminal_size((80, 40))]
+        real = cli.shutil.get_terminal_size
+        cli.shutil.get_terminal_size = lambda *a, **k: sizes.pop(0)
+        self.addCleanup(setattr, cli.shutil, "get_terminal_size", real)
+        self.ignore_log()
+        out = io.StringIO()
+        cli.main(["--watch", self.root], env=self.env, out=out, err=io.StringIO(), sleep=lambda s: None,
+                 max_frames=2, color=False)
+        frames = out.getvalue().split(CLEAR)
+        self.assertIn("WAITING ON YOU", frames[1])
+        self.assertIn("WAITING ON OWNER", frames[2])
+        self.assertEqual(sizes, [])
 
     def test_git_and_gh_gathered_every_tenth_frame(self):
         calls = []

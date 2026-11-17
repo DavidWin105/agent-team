@@ -4,7 +4,7 @@ import unittest
 from datetime import datetime, timezone
 
 from fixtures import make_project, valid_config, write_events
-from team_status import cards
+from team_status import cards, report
 from team_status.events import Event, EventLog, Row
 
 ANSI = re.compile(r"\x1b\[[0-9;]*m")
@@ -19,8 +19,9 @@ def event(ts="2026-11-17T14:02:09Z", kind="tool", agent="builder", tool="Edit", 
     return Event(ts, kind, "a1", agent, "subtract", tool, target, "pre", None)
 
 
-def draw(rows, recent=(), waiting=(), width=120, color=False, lead=LEAD):
-    return cards.render(rows, list(recent), valid_config(), lead, list(waiting), width, color)
+def draw(rows, recent=(), waiting=(), width=120, color=False, lead=LEAD, notes=(), warning=None):
+    return cards.render(rows, list(recent), valid_config(), lead, list(waiting), width, color,
+                        notes=list(notes), warning=warning)
 
 
 class CardsTest(unittest.TestCase):
@@ -92,9 +93,31 @@ class CardsTest(unittest.TestCase):
             self.assertLessEqual(len(ANSI.sub("", line)), 120)
 
     def test_no_agents_prints_the_no_events_message(self):
-        out = self.text([], lead="no agents yet")
-        self.assertIn("no agents yet", out)
-        self.assertNotIn("┌" * 2, out.replace("┌─", "┌ "))  # no card row
+        notes = report.log_notes(None, [], ".claude/team/events.jsonl")
+        out = draw([], lead="no agents yet", notes=notes)
+        self.assertIn("no agent events recorded yet (.claude/team/events.jsonl)", out)
+        self.assertIn("│ no agents yet", "\n".join(out))
+        self.assertFalse([line for line in out if line.count("│") >= 4])  # no card row
+
+    def test_notes_print_above_the_log(self):
+        out = draw([row()], recent=[event()], notes=["2 lines not read", "no plan marker: showing every event"])
+        self.assertIn("2 lines not read", out)
+        self.assertIn("no plan marker: showing every event", out)
+        log_line = next(i for i, line in enumerate(out) if "Edit src/calc.py" in line)
+        self.assertLess(out.index("2 lines not read"), log_line)
+        self.assertGreater(out.index("2 lines not read"), max(i for i, line in enumerate(out) if "┘" in line and i < log_line))
+
+    def test_shared_row_note_names_the_card(self):
+        out = draw([row(shared=2)])
+        self.assertIn("subtract · builder: 2 agents share this row", out)
+        self.assertFalse([line for line in draw([row()]) if "share this row" in line])
+
+    def test_warning_line_on_top(self):
+        out = draw([row()], warning="WARNING: x is not ignored by git; add x to .gitignore")
+        self.assertEqual(out[0], "WARNING: x is not ignored by git; add x to .gitignore")
+        self.assertNotIn("WARNING", "\n".join(draw([row()])))
+        colored = draw([row()], color=True, warning="WARNING: " + "y" * 300)
+        self.assertLessEqual(len(ANSI.sub("", colored[0])), 120)
 
     def test_cards_equal_width_and_aligned(self):
         out = draw([row(item="i%d" % n) for n in range(4)], width=120)

@@ -9,9 +9,10 @@ AGENT_NAME_WIDTH = 14
 GLYPHS = {"running": "\u25b6", "done": "\u2713", "failed": "\u2717", "silent": "?"}
 
 
-def render(project, head, plan_list, branches, prs, summary, routing_path, agents=None, now=None, events_path=DEFAULT_EVENTS):
+def render(project, head, plan_list, branches, prs, summary, routing_path, agents=None, now=None, events_path=DEFAULT_EVENTS,
+           warning=None):
     now = now or datetime.now(timezone.utc)
-    lines = ["agent-team · %s · %s %s" % (project, head.branch, head.commit), ""]
+    lines = ["agent-team · %s · %s %s" % (project, head.branch, head.commit)] + ([warning] if warning else []) + [""]
     lines += format_agents(agents, now, events_path) + [""]
     lines += _plans(plan_list) + [""]
     lines += ["WORKTREES   %d   %s" % (len(branches), ", ".join(branches)), ""]
@@ -23,9 +24,7 @@ def render(project, head, plan_list, branches, prs, summary, routing_path, agent
 
 def format_agents(log, now, events_path):
     """Answer the AGENTS section lines; say so when there is nothing to show."""
-    if log is None or (log.seen == 0 and log.unread == 0):
-        return ["AGENTS", "  no agent events recorded yet (%s)" % events_path]
-    rows = log.rows(now)
+    rows = [] if _empty(log) else log.rows(now)
     lines = ["AGENTS"]
     if rows:
         item_width = max(len(row.item or "-") for row in rows)
@@ -37,14 +36,31 @@ def format_agents(log, now, events_path):
                 % (item_width, row.item or "-", AGENT_NAME_WIDTH, row.agent or "-", status_width, text, _clock(row.seconds), row.calls)
             )
             if row.shared > 1:
-                lines.append("  %d agents share this row" % row.shared)
-    elif log.seen:
-        lines.append("  no agent activity since the last plan marker")
+                lines.append("  " + shared_note(row))
+    return lines + ["  " + note for note in log_notes(log, rows, events_path)]
+
+
+def log_notes(log, rows, events_path):
+    """Answer the notes that say the log is empty or incomplete; the table and the cards both print them."""
+    if _empty(log):
+        return ["no agent events recorded yet (%s)" % events_path]
+    notes = []
+    if not rows and log.seen:
+        notes.append("no agent activity since the last plan marker")
     if log.unread:
-        lines.append("  %d line%s not read" % (log.unread, "" if log.unread == 1 else "s"))
+        notes.append("%d line%s not read" % (log.unread, "" if log.unread == 1 else "s"))
     if log.plan is None and log.seen:
-        lines.append("  no plan marker: showing every event")
-    return lines
+        notes.append("no plan marker: showing every event")
+    return notes
+
+
+def shared_note(row):
+    """Answer the note for a row that several agents without an id share."""
+    return "%d agents share this row" % row.shared
+
+
+def _empty(log):
+    return log is None or (log.seen == 0 and log.unread == 0)
 
 
 def _status(row):

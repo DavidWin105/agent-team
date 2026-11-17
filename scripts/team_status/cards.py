@@ -2,7 +2,7 @@
 import re
 
 from team_status.config import model_for
-from team_status.report import GLYPHS
+from team_status.report import GLYPHS, shared_note
 
 MAX_PER_ROW = 4
 GAP = 2
@@ -15,10 +15,12 @@ GREY = "38;5;245"
 AMBER = "38;5;214"
 
 
-def render(rows, recent, cfg, lead_line, waiting, width, color):
-    """Answer the card screen as a list of lines, none wider than width."""
+def render(rows, recent, cfg, lead_line, waiting, width, color, notes=(), warning=None):
+    """Answer the card screen as a list of lines, none wider than width.
+
+    notes say the log is empty or incomplete (report.log_notes); warning goes on the first line."""
     paint = _painter(color)
-    lines = []
+    lines = [_clip(paint(warning, "1;" + AMBER), width)] if warning else []
     lead = model_for(cfg, "lead")
     lead_title = paint(("%s · lead" % lead) if lead else "lead", "1;" + TIER_COLOR.get(lead, "0"))
     lines += _centered(_box([lead_title, paint(lead_line, GREY)], min(width, 70), TIER_COLOR.get(lead), paint), width)
@@ -26,7 +28,8 @@ def render(rows, recent, cfg, lead_line, waiting, width, color):
         lines += _centered(_box([paint("Dispatch builders", "1"), paint("one per item", GREY)], min(width, 40), None, paint), width)
         lines += _card_rows(rows, cfg, width, paint)
         lines += _centered(_box(["back to lead · verify · open PRs"], min(width, 40), GREY, paint), width)
-    lines += [""] + _log(recent, cfg, width, paint) + [""]
+    notes = list(notes) + ["%s · %s: %s" % (row.item or "-", row.agent or "-", shared_note(row)) for row in rows if row.shared > 1]
+    lines += [""] + [_clip(paint(note, AMBER), width) for note in notes] + _log(recent, cfg, width, paint) + [""]
     items = " · ".join(waiting) if waiting else "nothing"
     lines += _box([paint("WAITING ON YOU", "1;" + AMBER) + "   " + items], width, AMBER, paint)
     return lines
