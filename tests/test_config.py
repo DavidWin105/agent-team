@@ -113,6 +113,24 @@ class ValidateTest(unittest.TestCase):
             ["paths.plan-glob must be a non-empty string", "paths.routing-log must be a non-empty string"],
         )
 
+    def test_events_path_defaults_when_missing(self):
+        data = valid_config()
+        self.assertEqual(config.validate(data), [])
+        self.assertEqual(config.events_path(data), config.DEFAULT_EVENTS)
+        self.assertEqual(config.DEFAULT_EVENTS, ".claude/team/events.jsonl")
+
+    def test_events_path_used_when_set(self):
+        data = valid_config()
+        data["paths"] = {**data["paths"], "events": "logs/e.jsonl"}
+        self.assertEqual(config.validate(data), [])
+        self.assertEqual(config.events_path(data), "logs/e.jsonl")
+
+    def test_events_must_be_non_empty_string(self):
+        for bad in ("", 3):
+            data = valid_config()
+            data["paths"] = {**data["paths"], "events": bad}
+            self.assertEqual(config.validate(data), ["paths.events must be a non-empty string"])
+
     def test_rules_and_specialists_are_optional(self):
         data = valid_config()
         del data["rules"]

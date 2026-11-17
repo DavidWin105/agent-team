@@ -8,6 +8,7 @@ CORE_ROLES = ("lead", "builder", "code-reviewer", "security-reviewer", "plan-rev
 REQUIRED_KEYS = ("version", "owner", "tiers", "roles", "checks", "owner-only", "paths")
 OPTIONAL_KEYS = ("specialists", "rules")
 PATH_KEYS = ("plans", "plan-glob", "routing-log")
+DEFAULT_EVENTS = ".claude/team/events.jsonl"
 RULE_DEFAULTS = {"reviewer-differs-from-writer": True, "rerun-up-after-failures": 2, "one-lead-per-plan": True}
 BOOLEAN_RULES = ("reviewer-differs-from-writer", "one-lead-per-plan")
 
@@ -108,7 +109,15 @@ def _check_owner_only(steps):
 def _check_paths(paths):
     if not isinstance(paths, dict):
         return ["paths must be an object"]
-    return ["paths.%s must be a non-empty string" % key for key in PATH_KEYS if not _is_text(paths.get(key))]
+    problems = ["paths.%s must be a non-empty string" % key for key in PATH_KEYS if not _is_text(paths.get(key))]
+    if "events" in paths and not _is_text(paths["events"]):
+        problems.append("paths.events must be a non-empty string")
+    return problems
+
+
+def events_path(cfg):
+    """Answer the events log path, relative to the project."""
+    return cfg["paths"].get("events", DEFAULT_EVENTS)
 
 
 def _check_rules(rules):

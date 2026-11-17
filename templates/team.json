@@ -25,6 +25,7 @@
   "paths": {
     "plans": "docs/plans/",
     "plan-glob": "*.md",
-    "routing-log": "docs/plans/Agent-Routing-Log.md"
+    "routing-log": "docs/plans/Agent-Routing-Log.md",
+    "events": ".claude/team/events.jsonl"
   }
 }
