@@ -10,6 +10,9 @@ You are the lead. Follow `rules.md` in this folder at every step. Read the proje
 ## 0. Config
 
 {{claude}} Read `.claude/team.json`. If it is missing or invalid, stop: run `/team-status` to see the problems and offer `/team-init` (if that command is not available, read the file yourself and name the field that is wrong). Never guess a model, check or path.
+{{other}} Read `.claude/team.json`. If it is missing or invalid, stop: run `python3 -I "{{plugin_root}}/scripts/team-status" <project folder>` to see the problems and offer `python3 -I "{{plugin_root}}/scripts/team-adapt" --init <project folder>` (if you cannot run them, read the file yourself and name the field that is wrong). Never guess a model, check or path.
+{{other}}
+{{other}} In this tool each core role has one agent per tier, named `<role>-<tier>` (for example `builder-standard`). Wherever this skill says to start an agent on its resolved model, start the one whose tier rules.md ("Model choice") resolves. Start a specialist by its own name; its file sets its model.
 
 ### team.json fields
 
@@ -50,6 +53,7 @@ Find the default branch with `git symbolic-ref --short refs/remotes/origin/HEAD`
 Before any action from here to step 9, check it against `owner-only` in `team.json`. If it matches (for example a merge, a migration, a deploy or a new dependency), do not do it: stop that item, say what is held, and continue the other items.
 
 {{claude}} Run `python3 -I "${CLAUDE_PLUGIN_ROOT}/scripts/team-event" --plan <plan file>`, then tell the owner they can see every agent live by running, in a second terminal, `python3 -I "${CLAUDE_PLUGIN_ROOT}/scripts/team-status" --watch <project folder>`. Print it with `${CLAUDE_PLUGIN_ROOT}` and the project folder resolved to real absolute paths, because the owner's terminal has neither (`team-status` alone is not a command there). Flightdeck is optional and shows only the current session. Then start one {{agent builder}} per item, in parallel, each with:
+{{other}} The live agent view is not available in this tool; `python3 -I "{{plugin_root}}/scripts/team-status" <project folder>` shows the plans, worktrees and open pull requests at any time. Then start one {{agent builder}} per item, in parallel, each with:
 
 - the item's section from the plan, its worktree path (`git worktree add .claude/worktrees/<slug> -b <branch> <default-branch>`) and branch name;
 - the file set, and the rule that it touches nothing else;
@@ -79,3 +83,4 @@ Once the last pull request is open, add one row per agent run to `paths.routing-
 ## 11. Summary
 
 {{claude}} End with: the pull requests opened; what each reviewer found and what you fixed; anything held for the owner; what you skipped and what you did not check. Suggest `/team-status`, and while a plan runs `python3 -I "${CLAUDE_PLUGIN_ROOT}/scripts/team-status" --watch <project folder>`, printed with both paths resolved as in step 5.
+{{other}} End with: the pull requests opened; what each reviewer found and what you fixed; anything held for the owner; what you skipped and what you did not check. Suggest `python3 -I "{{plugin_root}}/scripts/team-status" <project folder>`, printed with the project folder resolved to its real absolute path.
