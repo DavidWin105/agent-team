@@ -1,0 +1,14 @@
+#!/usr/bin/env python3
+"""Record an agent-team hook event in the live event log (agent-team plugin). Always exits 0."""
+import os
+import sys
+
+# `python3 -I` leaves the script's folder off sys.path; put it back so the package imports.
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+
+try:
+    from team_status.hook import main
+    code = main(sys.argv[1:], sys.stdin)
+except BaseException:
+    code = 0
+sys.exit(0 if code is None else code)
