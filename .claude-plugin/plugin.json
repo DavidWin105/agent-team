@@ -1,0 +1,17 @@
+{
+  "name": "agent-team",
+  "version": "0.1.0",
+  "description": "An AI agent team with a model per role, one workflow from plan to pull request, owner-only steps, and a team-status command for the terminal.",
+  "author": {
+    "name": "Win Ko"
+  },
+  "license": "MIT",
+  "repository": "https://github.com/DavidWin105/agent-team",
+  "keywords": [
+    "agents",
+    "team",
+    "workflow",
+    "routing",
+    "status"
+  ]
+}

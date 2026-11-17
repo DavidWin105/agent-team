@@ -1,0 +1,12 @@
+{
+  "name": "agent-team-local",
+  "metadata": { "description": "Local marketplace for the agent-team plugin." },
+  "owner": { "name": "Win Ko" },
+  "plugins": [
+    {
+      "name": "agent-team",
+      "source": "./",
+      "description": "An AI agent team with a model per role and a team-status command."
+    }
+  ]
+}

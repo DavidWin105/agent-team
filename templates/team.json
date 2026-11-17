@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "owner": "Owner",
+  "tiers": {
+    "claude-code": { "strongest": "fable", "strong": "opus", "standard": "sonnet", "fast": "haiku" }
+  },
+  "roles": {
+    "lead": "strong",
+    "builder": "standard",
+    "code-reviewer": "strong",
+    "security-reviewer": "strongest",
+    "plan-reviewer": "strongest",
+    "doc-recorder": "standard"
+  },
+  "specialists": [],
+  "rules": {
+    "reviewer-differs-from-writer": true,
+    "rerun-up-after-failures": 2,
+    "one-lead-per-plan": true
+  },
+  "checks": [
+    { "name": "tests", "run": "npm test" }
+  ],
+  "owner-only": ["merge", "migration", "deploy", "secrets", "new-dependency", "delete", "decision"],
+  "paths": {
+    "plans": "docs/plans/",
+    "plan-glob": "*.md",
+    "routing-log": "docs/plans/Agent-Routing-Log.md"
+  }
+}
