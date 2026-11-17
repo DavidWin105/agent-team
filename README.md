@@ -22,7 +22,6 @@ In Claude Code:
 1. `/team-init` writes `.claude/team.json`.
 2. Ask the lead to plan a task; approve the plan; ask it to run the plan.
 3. `/team-status`, or from a clone of this repository in any terminal: `python3 -I agent-team/scripts/team-status <project-dir>`.
-4. `/team-watch` prints the command that shows every agent live; paste it into a second terminal (see "Watch it live" below). [claude-flightdeck](https://github.com/scasella/claude-flightdeck) is an optional alternative: `/flightdeck` shows one session's agents.
 
 ### Watch it live
 

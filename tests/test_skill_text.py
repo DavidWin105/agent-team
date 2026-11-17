@@ -63,7 +63,6 @@ class SkillTextTest(unittest.TestCase):
         self.assertIn("`/team-watch`", section)
         self.assertIn("second terminal", section)
         self.assertIn("python3 -I", section)
-        self.assertIn("`/team-watch`", readme.split("## Use in a project", 1)[1].split("###", 1)[0])
 
     def test_first_design_doc_points_to_live_view(self):
         text = read("docs", "specs", "2026-11-17-agent-team-plugin-design.md")
