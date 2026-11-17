@@ -4,7 +4,7 @@ A Claude Code plugin: an AI agent team with a model per role, one workflow from 
 
 ![Mock-up of the live view](docs/media/live-view-preview-cards.png)
 
-*Mock-up of the live view (`team-status --watch`) with made-up data, not a screenshot of a real run.*
+*Mock-up of the live view (the `--watch` mode of team-status) with made-up data, not a screenshot of a real run.*
 
 The design is `docs/specs/2026-11-17-agent-team-plugin-design.md`.
 
