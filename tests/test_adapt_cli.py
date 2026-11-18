@@ -121,7 +121,7 @@ class AdaptTest(unittest.TestCase):
         code, out, err = self.run_adapt(root)
         self.assertEqual(code, 0, err)
         with open(os.path.join(root, "AGENTS.md")) as handle:
-            self.assertEqual(handle.read(), "# Owner notes\n\n")
+            self.assertEqual(handle.read(), "# Owner notes\n")
         self.assertIn("wrote AGENTS.md", out)
         with open(os.path.join(root, "GEMINI.md")) as handle:
             self.assertIn("<!-- agent-team:start -->", handle.read())

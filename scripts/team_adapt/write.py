@@ -12,8 +12,11 @@ def with_block(text, block):
     start, end = text.find(START), text.find(END)
     if start != -1 and end > start:
         if block is None:
-            rest = text[end + len(END):]
-            return text[:start] + (rest[1:] if rest.startswith("\n") else rest)
+            before, rest = text[:start], text[end + len(END):]
+            rest = rest[1:] if rest.startswith("\n") else rest
+            if before.endswith("\n\n") and not rest:  # drop the blank line that appending the block added
+                before = before[:-1]
+            return before + rest
         return text[:start] + START + "\n" + block + END + text[end + len(END):]
     if start != -1 and end != -1:
         raise ValueError("has the agent-team markers out of order")
