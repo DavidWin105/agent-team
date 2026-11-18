@@ -61,7 +61,7 @@ class PlanChangesTest(unittest.TestCase):
     def test_block_of_an_unconfigured_instruction_file_is_removed(self):
         self.put("AGENTS.md", "# Mine\n\n" + FULL + "\n")
         writes, deletes, problems = write.plan_changes(self.root, {}, {}, (), ("AGENTS.md", "GEMINI.md"))
-        self.assertEqual((writes, deletes, problems), ({"AGENTS.md": "# Mine\n\n"}, [], []))
+        self.assertEqual((writes, deletes, problems), ({"AGENTS.md": "# Mine\n"}, [], []))
 
     def test_unconfigured_instruction_file_without_a_block_is_left_alone(self):
         self.put("AGENTS.md", "# Mine\n")

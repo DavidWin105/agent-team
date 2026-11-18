@@ -62,6 +62,12 @@ Not yet run in any of these tools. The same workflow runs inside Codex CLI, Curs
 
 `team-adapt` overwrites or deletes only files it wrote, and writes nothing if it finds a problem. The generated `.agents/skills/agent-team/SKILL.md` names this clone by its absolute path. That path includes your user name and differs per machine, so a teammate with the clone elsewhere reruns `team-adapt`. The live agent view works only in Claude Code. If you configure both Codex and Cursor, Cursor also reads `.codex/agents/`, so check which agent it starts. Design: `docs/specs/2026-11-17-multi-tool-adapters-design.md`.
 
+## Removing the team
+
+To take a project back to how it was before agent-team, run `python3 -I agent-team/scripts/team-adapt --remove <project-dir>`. It lists what it will change and asks first. It deletes the generated agent files and lead skill, `.claude/team.json` and `.claude/team/`. It also takes the agent-team block out of `AGENTS.md` and `GEMINI.md`, deleting either file if nothing else is left, and the `.claude/team/` line out of `.gitignore`. Files you wrote yourself, your plans and the routing log stay. In Claude Code, also uninstall the plugin.
+
+To drop only one tool, delete its block under `tiers` in `.claude/team.json` and rerun `team-adapt <project-dir>`.
+
 ## Tests
 
 ```bash
